@@ -18,7 +18,6 @@ APPLE_STYLE_CSS = """
         padding: 10px 24px; transition: all 0.2s ease-in-out; font-weight: 500;
     }
     .stButton > button:hover { background-color: #0056b3; color: white; }
-    .stButton > button:disabled { background-color: #e9e9eb; color: #8a8a8a; border-color: #d1d1d6; cursor: not-allowed; }
     .stButton:has(button:contains("Làm mới")) > button { background-color: #e9e9eb; color: #000000; }
     .stButton:has(button:contains("Làm mới")) > button:hover { background-color: #d1d1d6; }
     .stTextArea textarea, .stTextInput input, .stSelectbox div[data-baseweb="select"] > div {
@@ -38,10 +37,6 @@ APPLE_STYLE_CSS = """
 st.markdown(APPLE_STYLE_CSS, unsafe_allow_html=True)
 
 # --- KHỞI TẠO SESSION STATE ---
-if 'result_generated' not in st.session_state:
-    st.session_state.result_generated = False
-if 'user_idea' not in st.session_state:
-    st.session_state.user_idea = ""
 if 'final_prompt' not in st.session_state:
     st.session_state.final_prompt = ""
 
@@ -136,21 +131,20 @@ with col2:
     user_idea = st.text_area(
         "Nhập ý tưởng video bằng tiếng Việt:", height=210,
         placeholder="Ví dụ: Thầy giáo bước lên bục giảng, mỉm cười nói: 'Xin chào các em'",
-        key="user_idea"
+        key="user_idea_input"
     )
     
     form_col1, form_col2 = st.columns([1, 1])
     with form_col1:
         submitted = st.button("Tạo kịch bản", use_container_width=True)
     with form_col2:
-        if st.button("Làm mới", use_container_width=True, disabled=not st.session_state.result_generated):
-            st.session_state.user_idea = ""
-            st.session_state.result_generated = False
+        # --- BỎ CHỨC NĂNG DISABLED ---
+        if st.button("Làm mới", use_container_width=True):
+            st.session_state.user_idea_input = ""
             st.session_state.final_prompt = ""
             st.rerun()
 
     if submitted and user_idea:
-        st.session_state.result_generated = False # Đặt lại trạng thái khi bắt đầu chạy
         if uploaded_file:
             final_style = "Dựa trên phong cách của hình ảnh được cung cấp"
         else:
@@ -200,8 +194,6 @@ with col2:
 
                 template = IMAGE_TO_VIDEO_TEMPLATE if uploaded_file else TEXT_TO_VIDEO_TEMPLATE
                 st.session_state.final_prompt = template.format(**prompt_data)
-                
-                st.session_state.result_generated = True
 
             except Exception as e:
                 st.error(f"Đã xảy ra lỗi: {e}")
