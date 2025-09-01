@@ -24,7 +24,7 @@ APPLE_STYLE_CSS = """
   }
   .stButton > button:hover { background-color: #0056b3; color: white; }
 
-  /* Text inputs */
+  /* Inputs */
   .stTextArea textarea, .stTextInput input {
       background-color: #ffffff; border: 1px solid #d1d1d6; border-radius: 12px; padding: 10px;
   }
@@ -32,7 +32,7 @@ APPLE_STYLE_CSS = """
       border-color: #007aff; box-shadow: 0 0 0 2px rgba(0,122,255,.2);
   }
 
-  /* Safe styling cho selectbox (không động > div) */
+  /* Safe styling cho selectbox */
   .stSelectbox [data-baseweb="select"] {
       background-color: #ffffff; border: 1px solid #d1d1d6; border-radius: 12px;
   }
@@ -52,7 +52,7 @@ APPLE_STYLE_CSS = """
 st.markdown(APPLE_STYLE_CSS, unsafe_allow_html=True)
 
 # ==============================
-# CONSTANTS & TEMPLATES
+# CONSTANTS & HELPERS
 # ==============================
 STYLE_OPTIONS = [
     "Chân thực (Photorealistic)",
@@ -65,20 +65,39 @@ STYLE_OPTIONS = [
 DEFAULT_STYLE = STYLE_OPTIONS[0]
 
 def style_to_en(label: str) -> str:
-    """Trả về phần tiếng Anh trong ngoặc. Nếu không có, trả về nguyên chuỗi."""
     m = re.search(r"\(([^)]+)\)", label)
     return m.group(1).strip() if m else label.strip()
 
+def safe_json_loads(raw: str) -> Dict[str, Any]:
+    """Parse JSON dù model có trả kèm markdown/quote lạ."""
+    t = raw.strip()
+    m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", t, flags=re.DOTALL|re.IGNORECASE)
+    if m: t = m.group(1)
+    t = t.replace("\u200b", "").translate({ord("“"): '"', ord("”"): '"', ord("‘"): "'", ord("’"): "'"})
+    t = re.sub(r",\s*([}\]])", r"\1", t)
+    s, e = t.find("{"), t.rfind("}")
+    if s != -1 and e > s: t = t[s:e+1]
+    return json.loads(t)
+
+# ==============================
+# PROMPT TEMPLATES (nâng cấp điện ảnh)
+# ==============================
 IMAGE_TO_VIDEO_TEMPLATE = """
 Style: {style}
 Initial Frame: Use the provided image of {subject_description}.
 Performance Direction: {performance_direction}
 Beats: {beats}
-Camera & Lens: {camera_motion} | Lens: {lens} | Aperture: {aperture} | Shutter: {shutter}
-Lighting: {lighting}
+Action Design: {action_design}
+Shot List: {shot_list}
+Camera & Lens: {camera_motion} | Lens: {lens} | Aperture: {aperture} | Shutter: {shutter} | Focus Pulling: {focus_pulling}
+Lighting & Grade: {lighting} | Color grade: {color_grade}
+Environment FX: {environment_fx}
 VFX: Maintain the original atmosphere. Animate effects like {visual_effects}. Avoid: {negative_cues}
+Speed & Ramps: {speed_ramping}
+Continuity: {continuity_anchors}
 Sound Design: {sound_design}
 Audio: {audio_section}
+Post: {postprocessing}
 Technical: duration {duration}s | aspect ratio {aspect_ratio} | fps {fps} | motion intensity {motion_intensity}
 """.strip()
 
@@ -87,55 +106,62 @@ Style: {style}
 Scene: A cinematic, 8k shot of {subject_description} in {setting_description}. Mood: {mood}.
 Performance Direction: {performance_direction}
 Beats: {beats}
-Camera & Lens: {camera_motion} | Lens: {lens} | Aperture: {aperture} | Shutter: {shutter}
-Lighting: {lighting}
+Action Design: {action_design}
+Shot List: {shot_list}
+Camera & Lens: {camera_motion} | Lens: {lens} | Aperture: {aperture} | Shutter: {shutter} | Focus Pulling: {focus_pulling}
+Lighting & Grade: {lighting} | Color grade: {color_grade}
+Environment FX: {environment_fx}
 VFX: Create realistic effects like {visual_effects}. Avoid: {negative_cues}
+Speed & Ramps: {speed_ramping}
+Continuity: {continuity_anchors}
 Sound Design: {sound_design}
 Audio: {audio_section}
+Post: {postprocessing}
 Technical: duration {duration}s | aspect ratio {aspect_ratio} | fps {fps} | motion intensity {motion_intensity}
 """.strip()
 
 META_PROMPT_FOR_GEMINI = """
-You are a film director AI. Convert a short Vietnamese idea into a production-ready JSON for a video generation model.
+You are a film director AI. Turn a short Vietnamese idea into a production-ready JSON for a video model.
 
-HARD REQUIREMENTS:
-- OUTPUT: A single valid JSON object only. No preface, no markdown.
-- LANGUAGE: All values MUST be in ENGLISH, EXCEPT the "dialogue" field which MUST remain in VIETNAMESE.
-- If a field is unknown, choose a sensible cinematic default (do not leave null).
+HARD REQUIREMENTS
+- OUTPUT: A single valid JSON object only (no markdown, no preface).
+- LANGUAGE: All values MUST be in ENGLISH, EXCEPT "dialogue" which MUST remain in VIETNAMESE.
+- If something is missing, pick cinematic defaults (avoid nulls).
 
-FIELDS TO PRODUCE (keys):
+FIELDS (keys)
 - subject_description, core_action, setting_description, mood
-- dialogue (VIETNAMESE, under 8 seconds total)
-- camera_motion, lens (e.g., "35mm"), aperture (e.g., "f/2.8"), shutter (e.g., "1/100")
+- dialogue (VIETNAMESE, max ~8s)
+- camera_motion, lens (e.g. "35mm"), aperture ("f/2.8"), shutter ("1/100"), focus_pulling
 - lighting, performance_direction, beats (comma-separated micro-beats)
-- visual_effects, negative_cues
-- voice_type, gesture, sound_design
-- duration (2–8), aspect_ratio ("16:9" | "9:16" | "1:1" | "21:9"), fps (24 | 25 | 30), motion_intensity ("low" | "medium" | "high")
+- action_design (stunts/choreo/vehicle dynamics), shot_list (key shots as a concise list)
+- environment_fx (rain, smoke, debris, reflections), color_grade (e.g., teal-orange high contrast)
+- speed_ramping (when to ramp speed/slow-mo), continuity_anchors (objects or lines that persist between shots)
+- visual_effects, negative_cues (avoid artifacts: extra limbs/flicker/etc.)
+- voice_type, gesture, sound_design, postprocessing
+- duration (2–8), aspect_ratio ("16:9"|"9:16"|"1:1"|"21:9"), fps (24|25|30), motion_intensity ("low"|"medium"|"high")
 
-CREATIVE PROCESS:
+CREATIVE PROCESS
 - Read the user's idea and selected style: "{style}".
-- Expand into a cinematic plan with clear camera, lighting, performance, and beats.
+- Infer genre and push cinematic specificity (for action: clear geography, momentum, cause-effect, stunt notes).
 - Keep "dialogue" in VIETNAMESE; everything else in ENGLISH.
 
 User Idea (Vietnamese): "{user_idea}"
 """.strip()
 
 # ==============================
-# SESSION STATE
+# SESSION STATE (đừng init uploaded_image để khỏi xung đột)
 # ==============================
-if "final_prompt" not in st.session_state:
-    st.session_state.final_prompt = ""
-if "user_idea" not in st.session_state:
-    st.session_state.user_idea = ""
-if "style" not in st.session_state:
-    st.session_state.style = DEFAULT_STYLE
+if "final_prompt" not in st.session_state: st.session_state.final_prompt = ""
+if "user_idea" not in st.session_state: st.session_state.user_idea = ""
+if "style" not in st.session_state: st.session_state.style = DEFAULT_STYLE
 
 def reset_form():
-    """Xoá toàn bộ dữ liệu form (không gọi st.rerun trong callback)."""
+    """Callback: xoá sạch state rồi để Streamlit tự rerun."""
     st.session_state.pop("uploaded_image", None)
     st.session_state["user_idea"] = ""
     st.session_state["final_prompt"] = ""
     st.session_state["style"] = DEFAULT_STYLE
+    # KHÔNG gọi st.rerun() trong callback
 
 # ==============================
 # SIDEBAR: API KEY
@@ -154,7 +180,7 @@ if not google_api_key:
     st.stop()
 
 # ==============================
-# GEMINI: force JSON + safe parser
+# GEMINI: JSON-only + schema mở rộng
 # ==============================
 RESPONSE_SCHEMA: Dict[str, Any] = {
     "type": "object",
@@ -168,14 +194,22 @@ RESPONSE_SCHEMA: Dict[str, Any] = {
         "lens": {"type": "string"},
         "aperture": {"type": "string"},
         "shutter": {"type": "string"},
+        "focus_pulling": {"type": "string"},
         "lighting": {"type": "string"},
         "performance_direction": {"type": "string"},
         "beats": {"type": "string"},
+        "action_design": {"type": "string"},
+        "shot_list": {"type": "string"},
+        "environment_fx": {"type": "string"},
+        "color_grade": {"type": "string"},
+        "speed_ramping": {"type": "string"},
+        "continuity_anchors": {"type": "string"},
         "visual_effects": {"type": "string"},
         "negative_cues": {"type": "string"},
         "voice_type": {"type": "string"},
         "gesture": {"type": "string"},
         "sound_design": {"type": "string"},
+        "postprocessing": {"type": "string"},
         "duration": {"type": "number"},
         "aspect_ratio": {"type": "string"},
         "fps": {"type": "number"},
@@ -183,28 +217,12 @@ RESPONSE_SCHEMA: Dict[str, Any] = {
     },
 }
 
-def safe_json_loads(raw: str) -> Dict[str, Any]:
-    """Cố gắng parse JSON từ mọi tình huống."""
-    t = raw.strip()
-    # code fence
-    m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", t, flags=re.DOTALL|re.IGNORECASE)
-    if m:
-        t = m.group(1)
-    # normalize quotes / trailing commas
-    t = t.replace("\u200b", "")
-    t = t.translate({ord("“"): '"', ord("”"): '"', ord("‘"): "'", ord("’"): "'"})
-    t = re.sub(r",\s*([}\]])", r"\1", t)
-    # try cut braces if extra text
-    s, e = t.find("{"), t.rfind("}")
-    if s != -1 and e > s: t = t[s:e+1]
-    return json.loads(t)
-
 try:
     genai.configure(api_key=google_api_key)
     gemini_model = genai.GenerativeModel(
         model_name="gemini-2.5-flash",
         generation_config={
-            "temperature": 0.8,
+            "temperature": 0.7,           # giữ chất lượng ổn định hơn
             "max_output_tokens": 2048,
             "response_mime_type": "application/json",
             "response_schema": RESPONSE_SCHEMA,
@@ -242,7 +260,7 @@ with col2:
     with st.expander("Tùy chọn nâng cao (kỹ thuật)", expanded=False):
         c1, c2, c3, c4 = st.columns(4)
         with c1:
-            duration = st.number_input("Thời lượng (s)", min_value=2, max_value=8, value=5, step=1)
+            duration = st.number_input("Thời lượng (s)", min_value=2, max_value=8, value=8, step=1)
         with c2:
             aspect_ratio = st.selectbox("Tỷ lệ khung", ["16:9", "9:16", "1:1", "21:9"], index=0)
         with c3:
@@ -269,16 +287,13 @@ with col2:
         key="user_idea"
     )
 
-    # ---- BUTTON ROW (2 nút luôn thẳng hàng) ----
+    # ---- 2 NÚT NGANG HÀNG ----
     bcol1, bcol2 = st.columns([1, 1])
     with bcol1:
         submitted = st.button("Tạo kịch bản", key="btn_create", use_container_width=True)
     with bcol2:
-        reset_clicked = st.button("Làm mới", key="btn_reset", use_container_width=True)
-
-    if reset_clicked:
-        reset_form()
-        st.rerun()
+        # dùng callback để tránh StreamlitAPIException
+        st.button("Làm mới", key="btn_reset", use_container_width=True, on_click=reset_form)
 
     # ==========================
     # XỬ LÝ TẠO PROMPT
@@ -287,9 +302,8 @@ with col2:
         if not user_idea.strip():
             st.warning("Vui lòng nhập ý tưởng của bạn.")
         else:
-            # dùng EN-only cho style
-            selected_style_en = style_to_en(selected_style)
-            final_style_for_model = "Derived from the provided image" if uploaded_file else selected_style_en
+            style_en = style_to_en(selected_style)
+            final_style_for_model = "Derived from the provided image" if uploaded_file else style_en
 
             with st.spinner("Đạo diễn AI đang phân tích và sáng tạo..."):
                 try:
@@ -304,52 +318,57 @@ with col2:
                         st.stop()
 
                     try:
-                        extracted_data = safe_json_loads(raw)
+                        extracted = safe_json_loads(raw)
                     except Exception:
                         st.error("Lỗi: Không tìm thấy JSON hợp lệ trong phản hồi của AI.")
                         with st.expander("Xem dữ liệu thô từ AI"):
                             st.code(raw)
                         st.stop()
 
-                    def _get(k, default): return extracted_data.get(k, default)
-
+                    g = lambda k, d: extracted.get(k, d)
                     prompt_data = {
-                        "subject_description": _get("subject_description", "a subject"),
-                        "core_action": _get("core_action", "a simple action"),
-                        "setting_description": _get("setting_description", "a location"),
-                        "dialogue": _get("dialogue", ""),
-                        "mood": _get("mood", "neutral"),
-                        "visual_effects": _get("visual_effects", "subtle particles"),
-                        "negative_cues": _get("negative_cues", "flicker, artifacts, extra limbs, deformed hands"),
-                        "voice_type": _get("voice_type", "a warm voice"),
-                        "gesture": _get("gesture", "natural gesture"),
-                        "camera_motion": _get("camera_motion", "gentle push-in"),
-                        "lens": _get("lens", "35mm"),
-                        "aperture": _get("aperture", "f/2.8"),
-                        "shutter": _get("shutter", "1/100"),
-                        "lighting": _get("lighting", "soft key light with warm rim"),
-                        "performance_direction": _get("performance_direction", "subtle smile, confident posture"),
-                        "beats": _get("beats", "establishing, action, close-up, resolve"),
+                        "subject_description": g("subject_description", "a subject"),
+                        "core_action": g("core_action", "a simple action"),
+                        "setting_description": g("setting_description", "a location"),
+                        "dialogue": g("dialogue", ""),
+                        "mood": g("mood", "neutral"),
+                        "camera_motion": g("camera_motion", "dynamic tracking with gentle push-in"),
+                        "lens": g("lens", "35mm"),
+                        "aperture": g("aperture", "f/2.8"),
+                        "shutter": g("shutter", "1/100"),
+                        "focus_pulling": g("focus_pulling", "rack focus on key beats"),
+                        "lighting": g("lighting", "soft key light with warm rim; motivated practicals"),
+                        "performance_direction": g("performance_direction", "grounded intensity; clear eyelines"),
+                        "beats": g("beats", "establishing, escalation, close-quarters, payoff"),
+                        "action_design": g("action_design", "clean geography; believable physics; near-misses and swerves"),
+                        "shot_list": g("shot_list", "wide establishing; low-angle tracking; OTS; insert of throttle; hero close-up"),
+                        "environment_fx": g("environment_fx", "sparks, smoke wisps, wet asphalt reflections"),
+                        "color_grade": g("color_grade", "teal-orange with high contrast"),
+                        "speed_ramping": g("speed_ramping", "90–110% micro ramps; one 60% slow-mo hero beat"),
+                        "continuity_anchors": g("continuity_anchors", "neon billboard on left; cracked taxi windshield"),
+                        "visual_effects": g("visual_effects", "heat haze, light streaks"),
+                        "negative_cues": g("negative_cues", "flicker, extra limbs, deformed hands, melting textures"),
+                        "voice_type": g("voice_type", "gritty male voice"),
+                        "gesture": g("gesture", "firm grip, head tilt"),
+                        "sound_design": g("sound_design", "engine roar, tire squeal, Doppler police sirens, metal clanks, rising adrenaline music"),
+                        "postprocessing": g("postprocessing", "subtle film grain; gentle vignette"),
                         "duration": duration,
                         "aspect_ratio": aspect_ratio,
                         "fps": fps,
                         "motion_intensity": motion_intensity,
                     }
 
-                    # EN-only trong output
-                    prompt_data["style"] = "In the style of the provided image" if uploaded_file else selected_style_en
+                    prompt_data["style"] = "In the style of the provided image" if uploaded_file else style_en
 
                     if prompt_data["dialogue"]:
                         prompt_data["audio_section"] = f'Generate natural Vietnamese speech, spoken by {prompt_data["voice_type"]}.'
                     else:
                         prompt_data["audio_section"] = "No speech; only ambience and foley."
 
-                    prompt_data["sound_design"] = _get("sound_design", "subtle room tone, soft footsteps, light music bed")
-
                     template = IMAGE_TO_VIDEO_TEMPLATE if uploaded_file else TEXT_TO_VIDEO_TEMPLATE
                     st.session_state.final_prompt = template.format(**prompt_data)
 
-                    st.rerun()
+                    st.rerun()  # ngoài callback: rerun để show kết quả ngay
 
                 except Exception as e:
                     st.error("Đã xảy ra lỗi khi tạo kịch bản. Vui lòng thử lại.")
@@ -365,7 +384,7 @@ if st.session_state.final_prompt:
     st.text_area(
         "Prompt (tiếng Anh) đã được tối ưu cho AI:",
         value=st.session_state.final_prompt,
-        height=380
+        height=430
     )
 
 # ==============================
