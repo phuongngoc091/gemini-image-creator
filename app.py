@@ -14,20 +14,13 @@ APPLE_STYLE_CSS = """
     body, .stApp { background-color: #f0f2f5; color: #000000; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
     h1, h2, h3 { font-weight: 600; }
     .stApp > header { background-color: transparent; }
-    /* Button mặc định */
     .stButton > button {
         background-color: #007aff; color: white; border: none; border-radius: 12px;
         padding: 10px 24px; transition: all 0.2s ease-in-out; font-weight: 500;
     }
     .stButton > button:hover { background-color: #0056b3; color: white; }
-    /* Button xám (container phải có class custom-gray-btn) */
-    .custom-gray-btn .stButton > button {
-        background-color: #e9e9eb; color: #000000;
-    }
-    .custom-gray-btn .stButton > button:hover {
-        background-color: #d1d1d6; color: #000000;
-    }
-    /* Input */
+    .custom-gray-btn .stButton > button { background-color: #e9e9eb; color: #000000; }
+    .custom-gray-btn .stButton > button:hover { background-color: #d1d1d6; }
     .stTextArea textarea, .stTextInput input, .stSelectbox div[data-baseweb="select"] > div {
         background-color: #ffffff; border: 1px solid #d1d1d6; border-radius: 12px; padding: 10px;
     }
@@ -57,69 +50,79 @@ STYLE_OPTIONS = [
 ]
 DEFAULT_STYLE = STYLE_OPTIONS[0]
 
+# Prompt template cho 2 trường hợp
 IMAGE_TO_VIDEO_TEMPLATE = """
 Style: {style}
 Initial Frame: Use the provided image of {subject_description}.
-Animation: Animate the subject to {core_action}.
-Camera Motion: {camera_motion}.
-Speech: {dialogue_section}
-Visual Effects: Maintain the original atmosphere. Animate effects like {visual_effects}.
+Performance Direction: {performance_direction}
+Beats: {beats}
+Camera & Lens: {camera_motion} | Lens: {lens} | Aperture: {aperture} | Shutter: {shutter}
+Lighting: {lighting}
+VFX: Maintain the original atmosphere. Animate effects like {visual_effects}. Avoid: {negative_cues}
+Sound Design: {sound_design}
 Audio: {audio_section}
+Technical: duration {duration}s | aspect ratio {aspect_ratio} | fps {fps} | motion intensity {motion_intensity}
 """.strip()
 
 TEXT_TO_VIDEO_TEMPLATE = """
 Style: {style}
-Scene Description: A cinematic, 8k, photorealistic shot of {subject_description} in {setting_description}. The mood is {mood}.
-Animation: Animate the subject to {core_action}.
-Camera Motion: {camera_motion}.
-Speech: {dialogue_section}
-Visual Effects: Create realistic effects like {visual_effects}.
+Scene: A cinematic, 8k shot of {subject_description} in {setting_description}. Mood: {mood}.
+Performance Direction: {performance_direction}
+Beats: {beats}
+Camera & Lens: {camera_motion} | Lens: {lens} | Aperture: {aperture} | Shutter: {shutter}
+Lighting: {lighting}
+VFX: Create realistic effects like {visual_effects}. Avoid: {negative_cues}
+Sound Design: {sound_design}
 Audio: {audio_section}
+Technical: duration {duration}s | aspect ratio {aspect_ratio} | fps {fps} | motion intensity {motion_intensity}
 """.strip()
 
+# Meta-prompt nâng cấp: bắt buộc JSON tiếng Anh (trừ dialogue), thêm nhiều trường điện ảnh
 META_PROMPT_FOR_GEMINI = """
-You are a creative director AI. Your primary task is to convert a simple user idea (in Vietnamese) into a detailed cinematic prompt for a video AI model.
+You are a film director AI. Convert a short Vietnamese idea into a production-ready JSON for a video generation model.
 
-**CRITICAL OUTPUT REQUIREMENTS:**
-1.  **LANGUAGE:** All JSON values MUST be in ENGLISH, with only ONE exception. This includes proper nouns like names and places, which should be transliterated or translated appropriately (e.g., "Thầy giáo Phương Ngọc" should become "Teacher Phuong Ngoc").
-2.  **EXCEPTION FOR DIALOGUE:** The value for the "dialogue" field MUST remain in its original VIETNAMESE.
-3.  **FORMAT:** The entire final output MUST be a single, clean JSON object. Do not add any explanatory text before or after the JSON block.
+HARD REQUIREMENTS:
+- OUTPUT: A single valid JSON object only. No preface, no markdown.
+- LANGUAGE: All values MUST be in ENGLISH, EXCEPT the "dialogue" field which MUST remain in VIETNAMESE.
+- If a field is unknown, choose a sensible cinematic default (do not leave null).
 
-**CREATIVE PROCESS:**
--   Analyze the user's idea and the chosen `{style}`.
--   Envision the scene and add creative details for subject, setting, mood, lighting, and camera work.
--   Rewrite dialogue in VIETNAMESE to be concise (under 8s). If none, the "dialogue" field should be an empty string.
--   Translate descriptive elements to English.
--   Construct a JSON object with all required fields.
+FIELDS TO PRODUCE (keys):
+- subject_description, core_action, setting_description, mood
+- dialogue (VIETNAMESE, under 8 seconds total)
+- camera_motion (concise), lens (e.g., "35mm"), aperture (e.g., "f/2.8"), shutter (e.g., "1/100")
+- lighting (cinematic description), performance_direction (actor/character behavior notes), beats (comma-separated micro-beats)
+- visual_effects (positive VFX), negative_cues (things to avoid: distortions, extra limbs, flicker, deformed hands, artifacts)
+- voice_type (e.g., "warm female voice"), gesture, sound_design (ambience, foley, music cue)
+- duration (seconds, number 2–8), aspect_ratio (e.g., "16:9"), fps (e.g., 24), motion_intensity ("low" | "medium" | "high")
 
-**STYLE DIRECTIVE:** The user has selected the style: "{style}".
+CREATIVE PROCESS:
+- Read the user's idea and selected style: "{style}".
+- Expand into a cinematic plan with clear camera, lighting, performance, and beats.
+- Keep "dialogue" in VIETNAMESE; everything else in ENGLISH.
 
-**Analyze the user's idea below and generate the JSON output, strictly following all critical requirements.**
-User Idea: "{user_idea}"
+User Idea (Vietnamese): "{user_idea}"
 """.strip()
 
 # ==============================
-# SESSION STATE
+# SESSION STATE (không set uploaded_image để tránh xung đột)
 # ==============================
 if "final_prompt" not in st.session_state:
     st.session_state.final_prompt = ""
 if "user_idea" not in st.session_state:
     st.session_state.user_idea = ""
-if "uploaded_image" not in st.session_state:
-    st.session_state.uploaded_image = None
 if "style" not in st.session_state:
     st.session_state.style = DEFAULT_STYLE
 
 def reset_form():
-    """Xoá toàn bộ dữ liệu form và rerun."""
-    st.session_state.user_idea = ""
-    st.session_state.final_prompt = ""
-    st.session_state.uploaded_image = None
-    st.session_state.style = DEFAULT_STYLE
+    """Xoá toàn bộ dữ liệu form và rerun (an toàn với file_uploader)."""
+    st.session_state.pop("uploaded_image", None)  # quan trọng: xoá key thay vì gán None
+    st.session_state["user_idea"] = ""
+    st.session_state["final_prompt"] = ""
+    st.session_state["style"] = DEFAULT_STYLE
     st.rerun()
 
 # ==============================
-# SIDEBAR: Cấu hình API Key
+# SIDEBAR: API Key
 # ==============================
 with st.sidebar:
     st.header("Cấu hình")
@@ -134,22 +137,23 @@ if not google_api_key:
     st.error("Vui lòng nhập API Key để bắt đầu.")
     st.stop()
 
+# Khởi tạo model
 try:
     genai.configure(api_key=google_api_key)
-    gemini_model = genai.GenerativeModel(model_name="gemini-2.5-flash")
+    gemini_model = genai.GenerativeModel(
+        model_name="gemini-2.5-flash",
+        generation_config={"temperature": 0.8, "max_output_tokens": 2048},
+    )
 except Exception as e:
     st.error(f"Lỗi cấu hình API Key: {e}")
     st.stop()
 
 # ==============================
-# TIÊU ĐỀ
+# UI CHÍNH
 # ==============================
 st.title("Viết prompt tạo video với phuongngoc091")
 st.caption("Biến ý tưởng đơn giản của bạn thành một kịch bản video chi tiết.")
 
-# ==============================
-# GIAO DIỆN CHÍNH
-# ==============================
 col1, col2 = st.columns([1, 2], gap="large")
 
 with col1:
@@ -157,7 +161,7 @@ with col1:
     uploaded_file = st.file_uploader(
         "Tải ảnh lên (tùy chọn)",
         type=["png", "jpg", "jpeg"],
-        key="uploaded_image"
+        key="uploaded_image"  # để có thể xoá bằng pop() khi reset
     )
     if uploaded_file:
         try:
@@ -168,6 +172,18 @@ with col1:
 
 with col2:
     st.subheader("Ý tưởng của bạn")
+
+    # Tùy chọn nâng cao kỹ thuật
+    with st.expander("Tùy chọn nâng cao (kỹ thuật)", expanded=False):
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            duration = st.number_input("Thời lượng (s)", min_value=2, max_value=8, value=5, step=1)
+        with c2:
+            aspect_ratio = st.selectbox("Tỷ lệ khung", ["16:9", "9:16", "1:1", "21:9"], index=0)
+        with c3:
+            fps = st.selectbox("FPS", [24, 25, 30], index=0)
+        with c4:
+            motion_intensity = st.selectbox("Độ mạnh chuyển động", ["low", "medium", "high"], index=1)
 
     is_style_disabled = (uploaded_file is not None)
     selected_style = st.selectbox(
@@ -192,11 +208,10 @@ with col2:
     with form_col1:
         submitted = st.button("Tạo kịch bản", use_container_width=True)
     with form_col2:
-        # Bọc vào container riêng để style xám áp dụng chắc chắn
         with st.container():
             st.markdown('<div class="custom-gray-btn">', unsafe_allow_html=True)
             st.button("Làm mới", use_container_width=True, on_click=reset_form)
-            st.markdown('</div>', unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
 
     # ==========================
     # XỬ LÝ TẠO PROMPT
@@ -220,53 +235,63 @@ with col2:
                         st.error("Lỗi: AI không trả về nội dung. Yêu cầu của bạn có thể đã bị chặn.")
                         st.stop()
 
-                    # Cố gắng cắt đúng JSON
                     raw_text = response.text.strip()
                     start_index = raw_text.find("{")
                     end_index = raw_text.rfind("}") + 1
-
                     if start_index == -1 or end_index <= start_index:
-                        st.error("Lỗi: Không tìm thấy dữ liệu JSON hợp lệ trong phản hồi của AI.")
+                        st.error("Lỗi: Không tìm thấy JSON hợp lệ trong phản hồi của AI.")
                         with st.expander("Xem dữ liệu thô từ AI"):
                             st.code(raw_text)
                         st.stop()
 
                     response_text = raw_text[start_index:end_index]
-
-                    # Parse JSON
                     extracted_data = json.loads(response_text)
 
-                    # Ghép dữ liệu
+                    # Ghép dữ liệu đầy đủ + mặc định hợp lý
+                    def _get(k, default): return extracted_data.get(k, default)
+
                     prompt_data = {
-                        "subject_description": extracted_data.get("subject_description", "a scene"),
-                        "core_action": extracted_data.get("core_action", "an action"),
-                        "setting_description": extracted_data.get("setting_description", "a location"),
-                        "dialogue": extracted_data.get("dialogue", ""),
-                        "mood": extracted_data.get("mood", "neutral"),
-                        "visual_effects": extracted_data.get("visual_effects", "none"),
-                        "voice_type": extracted_data.get("voice_type", "a voice"),
-                        "gesture": extracted_data.get("gesture", "a natural gesture"),
-                        "camera_motion": extracted_data.get("camera_motion", "a stable, static shot"),
+                        "subject_description": _get("subject_description", "a subject"),
+                        "core_action": _get("core_action", "a simple action"),
+                        "setting_description": _get("setting_description", "a location"),
+                        "dialogue": _get("dialogue", ""),
+                        "mood": _get("mood", "neutral"),
+                        "visual_effects": _get("visual_effects", "subtle particles"),
+                        "negative_cues": _get("negative_cues", "flicker, artifacts, extra limbs, deformed hands"),
+                        "voice_type": _get("voice_type", "a warm voice"),
+                        "gesture": _get("gesture", "natural gesture"),
+                        "camera_motion": _get("camera_motion", "gentle push-in"),
+                        "lens": _get("lens", "35mm"),
+                        "aperture": _get("aperture", "f/2.8"),
+                        "shutter": _get("shutter", "1/100"),
+                        "lighting": _get("lighting", "soft key light with warm rim"),
+                        "performance_direction": _get("performance_direction", "subtle smile, confident posture"),
+                        "beats": _get("beats", "establishing, action, close-up, resolve"),
+                        # kỹ thuật (ghi đè bằng UI nếu có)
+                        "duration": duration,
+                        "aspect_ratio": aspect_ratio,
+                        "fps": fps,
+                        "motion_intensity": motion_intensity,
                     }
 
-                    # Style hiển thị trong prompt
-                    prompt_data["style"] = (
-                        "In the style of the provided image" if uploaded_file else final_style
-                    )
+                    prompt_data["style"] = "In the style of the provided image" if uploaded_file else final_style
 
                     # Thoại & audio
                     if prompt_data["dialogue"]:
-                        prompt_data["dialogue_section"] = f'Animate mouth to sync with: "{prompt_data["dialogue"]}".'
-                        prompt_data["audio_section"] = f'Generate natural-sounding Vietnamese speech, spoken by {prompt_data["voice_type"]}.'
+                        prompt_data["audio_section"] = f'Generate natural Vietnamese speech, spoken by {prompt_data["voice_type"]}.'
                     else:
-                        prompt_data["dialogue_section"] = "No dialogue."
-                        prompt_data["audio_section"] = "No speech audio, only ambient sounds."
+                        prompt_data["audio_section"] = "No speech; only ambience and foley."
+
+                    # Sound design
+                    prompt_data["sound_design"] = _get(
+                        "sound_design",
+                        "subtle room tone, soft footsteps, light music bed"
+                    )
 
                     # Chọn template theo việc có ảnh hay không
                     template = IMAGE_TO_VIDEO_TEMPLATE if uploaded_file else TEXT_TO_VIDEO_TEMPLATE
                     st.session_state.final_prompt = template.format(**prompt_data)
 
-                    # Rerun để đảm bảo text_area kết quả hiển thị tức thì (nếu muốn có thể bỏ)
                     st.rerun()
 
                 except json.JSONDecodeError as je:
@@ -289,7 +314,7 @@ with col2:
         st.text_area(
             "Prompt (tiếng Anh) đã được tối ưu cho AI:",
             value=st.session_state.final_prompt,
-            height=350
+            height=380
         )
 
 # ==============================
