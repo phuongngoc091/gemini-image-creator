@@ -140,7 +140,7 @@ with col2:
     with form_col2:
         # --- BỎ CHỨC NĂNG DISABLED ---
         if st.button("Làm mới", use_container_width=True):
-            st.session_state.user_idea_input = ""
+            st.session_state.user_idea = ""
             st.session_state.final_prompt = ""
             st.rerun()
 
