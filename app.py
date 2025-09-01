@@ -2,7 +2,7 @@
 import streamlit as st
 import google.generativeai as genai
 from PIL import Image
-import json, re, unicodedata
+import json, re, unicodedata, random
 from typing import Any, Dict
 
 # ==============================
@@ -69,14 +69,12 @@ def style_to_en(label: str) -> str:
     return m.group(1).strip() if m else label.strip()
 
 def strip_diacritics(text: str) -> str:
-    """Loại dấu tiếng Việt: 'Phương Ngọc' -> 'Phuong Ngoc'."""
-    if not isinstance(text, str):
-        return text
+    if not isinstance(text, str): return text
     nfkd = unicodedata.normalize("NFKD", text)
     return "".join([c for c in nfkd if not unicodedata.combining(c)])
 
 def canonicalize_names(data: Dict[str, Any]) -> Dict[str, Any]:
-    """Chuẩn hoá tên riêng sang không dấu cho mọi field trừ dialogue."""
+    """Tên riêng không dấu cho mọi field TRỪ dialogue."""
     keys = [
         "subject_description","core_action","setting_description","mood",
         "camera_motion","lens","aperture","shutter","focus_pulling","lighting",
@@ -89,29 +87,54 @@ def canonicalize_names(data: Dict[str, Any]) -> Dict[str, Any]:
             data[k] = strip_diacritics(data[k])
     return data
 
-def ensure_dialogue(user_idea_vi: str, dialogue: str | None) -> str:
-    """Nếu dialogue rỗng -> tạo câu chào ngắn bằng tiếng Việt."""
-    if dialogue and dialogue.strip():
-        return dialogue.strip()
-    # fallback tiếng Việt ~1 câu, < 8s
-    # nếu ý tưởng chứa 'chào' => dùng 'Xin chào các em'
-    if "chào" in user_idea_vi.lower():
-        return "Xin chào các em, hôm nay chúng ta cùng bắt đầu nhé!"
-    return "Chào các em, chúng ta bắt đầu bài học nhé!"
+def has_speech_intent(text: str) -> bool:
+    t = (text or "").lower()
+    cues = [
+        "lời thoại","thoại","nói","chào","hỏi","trả lời","đối thoại","thuyết minh",
+        "voice","voiceover","voice over","nói chuyện","gọi","hét","la","phỏng vấn",
+        "trò chuyện","đối đáp","đàm thoại","conversation","interview","debate"
+    ]
+    return any(cue in t for cue in cues)
+
+def has_multi_dialogue_intent(text: str) -> bool:
+    """Ý tưởng có vẻ là hội thoại giữa nhiều người?"""
+    t = (text or "").lower()
+    cues = [
+        "đối thoại","nói chuyện với nhau","trò chuyện","hỏi đáp","đối đáp",
+        "phỏng vấn","phỏng vấn nhau","conversation","interview","debate",
+        "hội thoại","trao đổi"
+    ]
+    return any(cue in t for cue in cues)
+
+def craft_dialogue(user_idea_vi: str) -> str:
+    t = user_idea_vi.lower()
+    if any(k in t for k in ["thầy","cô","giáo viên"]) and any(k in t for k in ["học sinh","lớp","lớp học"]):
+        return random.choice([
+            "Chào các em, hôm nay chúng ta bắt đầu bài học nhé!",
+            "Xin chào các em, chúc cả lớp một buổi học hiệu quả!",
+            "Chào các em, hôm nay thầy cô có bài học rất thú vị!"
+        ])
+    if "giới thiệu" in t:
+        return "Xin chào mọi người, mình là Phuong Ngoc, rất vui được đồng hành cùng các bạn!"
+    if "chào" in t:
+        return "Xin chào mọi người, chúng ta bắt đầu nhé!"
+    return "Chào mọi người, mình bắt đầu được chứ?"
+
+def normalize_speaker(name: str) -> str:
+    return strip_diacritics(name or "").strip() or "Speaker"
 
 def safe_json_loads(raw: str) -> Dict[str, Any]:
-    """Parse JSON dù model có trả kèm markdown/quote lạ."""
     t = raw.strip()
     m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", t, flags=re.DOTALL|re.IGNORECASE)
     if m: t = m.group(1)
-    t = t.replace("\u200b", "").translate({ord("“"): '"', ord("”"): '"', ord("‘"): "'", ord("’"): "'"})
+    t = t.replace("\u200b","").translate({ord("“"): '"', ord("”"): '"', ord("‘"): "'", ord("’"): "'"})
     t = re.sub(r",\s*([}\]])", r"\1", t)
     s, e = t.find("{"), t.rfind("}")
     if s != -1 and e > s: t = t[s:e+1]
     return json.loads(t)
 
 # ==============================
-# PROMPT TEMPLATES (điện ảnh)
+# PROMPT TEMPLATES
 # ==============================
 IMAGE_TO_VIDEO_TEMPLATE = """
 Style: {style}
@@ -151,19 +174,26 @@ Post: {postprocessing}
 Technical: duration {duration}s | aspect ratio {aspect_ratio} | fps {fps} | motion intensity {motion_intensity}
 """.strip()
 
+# === META PROMPT (JSON-only, nhiều nhân vật khi cần) ===
 META_PROMPT_FOR_GEMINI = """
 You are a film director AI. Turn a short Vietnamese idea into a production-ready JSON for a video model.
 
 HARD REQUIREMENTS
 - OUTPUT: A single valid JSON object only (no markdown, no preface).
-- LANGUAGE: All values MUST be in ENGLISH, EXCEPT "dialogue" which MUST remain in VIETNAMESE.
-- If something is missing, pick cinematic defaults (avoid nulls).
+- LANGUAGE: All values MUST be in ENGLISH, EXCEPT "dialogue" and "dialogue_lines[].line_vi" which MUST remain in VIETNAMESE.
+- Only output a NON-EMPTY "dialogue" if the user's idea clearly implies speech
+  (mentions cues like: lời thoại/thoại/nói/chào/hỏi/trả lời/đối thoại/thuyết minh/voice...).
+- If the idea implies **two or more people talking to each other** (dialogue, interview, conversation, debate),
+  prefer "dialogue_lines" array with items:
+  { speaker: ASCII (no Vietnamese diacritics), line_vi: VIETNAMESE text, voice_tone: short English tone hint }.
+- Names must be ASCII without Vietnamese diacritics, e.g., "Teacher Phuong Ngoc".
 
 FIELDS (keys)
 - subject_description, core_action, setting_description, mood
-- dialogue (VIETNAMESE, max ~8s)
-- camera_motion, lens (e.g. "35mm"), aperture ("f/2.8"), shutter ("1/100"), focus_pulling
-- lighting, performance_direction, beats (comma-separated micro-beats)
+- dialogue (optional, single-line VIETNAMESE) OR
+- dialogue_lines (optional, array of lines as specified above)
+- camera_motion, lens ("35mm"), aperture ("f/2.8"), shutter ("1/100"), focus_pulling
+- lighting, performance_direction, beats
 - action_design, shot_list, environment_fx, color_grade
 - speed_ramping, continuity_anchors, visual_effects, negative_cues
 - voice_type, gesture, sound_design, postprocessing
@@ -171,7 +201,8 @@ FIELDS (keys)
 
 CREATIVE PROCESS
 - Read the user's idea and selected style: "{style}".
-- Keep "dialogue" in VIETNAMESE; everything else in ENGLISH.
+- If there are multiple speakers, keep total dialogue under ~8 seconds and split lines clearly.
+- Keep all non-dialogue values in ENGLISH; keep dialogue content in VIETNAMESE.
 
 User Idea (Vietnamese): "{user_idea}"
 """.strip()
@@ -184,12 +215,11 @@ if "user_idea" not in st.session_state: st.session_state.user_idea = ""
 if "style" not in st.session_state: st.session_state.style = DEFAULT_STYLE
 
 def reset_form():
-    """Callback: xoá sạch state rồi để Streamlit tự rerun."""
     st.session_state.pop("uploaded_image", None)
     st.session_state["user_idea"] = ""
     st.session_state["final_prompt"] = ""
     st.session_state["style"] = DEFAULT_STYLE
-    # KHÔNG gọi st.rerun() trong callback
+    # Không gọi st.rerun() trong callback
 
 # ==============================
 # SIDEBAR: API KEY
@@ -212,22 +242,56 @@ if not google_api_key:
 # ==============================
 RESPONSE_SCHEMA: Dict[str, Any] = {
     "type": "object",
-    "properties": {k: {"type": "string"} for k in [
-        "subject_description","core_action","setting_description","mood","dialogue",
-        "camera_motion","lens","aperture","shutter","focus_pulling","lighting",
-        "performance_direction","beats","action_design","shot_list","environment_fx",
-        "color_grade","speed_ramping","continuity_anchors","visual_effects","negative_cues",
-        "voice_type","gesture","sound_design","postprocessing","aspect_ratio","motion_intensity"
-    ]}
+    "properties": {
+        "subject_description": {"type": "string"},
+        "core_action": {"type": "string"},
+        "setting_description": {"type": "string"},
+        "mood": {"type": "string"},
+        "dialogue": {"type": "string"},
+        "dialogue_lines": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "speaker": {"type": "string"},
+                    "line_vi": {"type": "string"},
+                    "voice_tone": {"type": "string"}
+                }
+            }
+        },
+        "camera_motion": {"type": "string"},
+        "lens": {"type": "string"},
+        "aperture": {"type": "string"},
+        "shutter": {"type": "string"},
+        "focus_pulling": {"type": "string"},
+        "lighting": {"type": "string"},
+        "performance_direction": {"type": "string"},
+        "beats": {"type": "string"},
+        "action_design": {"type": "string"},
+        "shot_list": {"type": "string"},
+        "environment_fx": {"type": "string"},
+        "color_grade": {"type": "string"},
+        "speed_ramping": {"type": "string"},
+        "continuity_anchors": {"type": "string"},
+        "visual_effects": {"type": "string"},
+        "negative_cues": {"type": "string"},
+        "voice_type": {"type": "string"},
+        "gesture": {"type": "string"},
+        "sound_design": {"type": "string"},
+        "postprocessing": {"type": "string"},
+        "duration": {"type": "number"},
+        "aspect_ratio": {"type": "string"},
+        "fps": {"type": "number"},
+        "motion_intensity": {"type": "string"},
+    },
 }
-RESPONSE_SCHEMA["properties"].update({"duration": {"type": "number"}, "fps": {"type": "number"}})
 
 try:
     genai.configure(api_key=google_api_key)
     gemini_model = genai.GenerativeModel(
         model_name="gemini-2.5-flash",
         generation_config={
-            "temperature": 0.7,  # giữ chất lượng ổn định
+            "temperature": 0.7,
             "max_output_tokens": 2048,
             "response_mime_type": "application/json",
             "response_schema": RESPONSE_SCHEMA,
@@ -247,11 +311,7 @@ col1, col2 = st.columns([1, 2], gap="large")
 
 with col1:
     st.subheader("Ý tưởng hình sang video")
-    uploaded_file = st.file_uploader(
-        "Tải ảnh lên (tùy chọn)",
-        type=["png", "jpg", "jpeg"],
-        key="uploaded_image"
-    )
+    uploaded_file = st.file_uploader("Tải ảnh lên (tùy chọn)", type=["png","jpg","jpeg"], key="uploaded_image")
     if uploaded_file:
         try:
             st.image(Image.open(uploaded_file), caption="Khung hình khởi đầu", use_container_width=True)
@@ -264,14 +324,10 @@ with col2:
 
     with st.expander("Tùy chọn nâng cao (kỹ thuật)", expanded=False):
         c1, c2, c3, c4 = st.columns(4)
-        with c1:
-            duration = st.number_input("Thời lượng (s)", min_value=2, max_value=8, value=5, step=1)
-        with c2:
-            aspect_ratio = st.selectbox("Tỷ lệ khung", ["16:9", "9:16", "1:1", "21:9"], index=0)
-        with c3:
-            fps = st.selectbox("FPS", [24, 25, 30], index=0)
-        with c4:
-            motion_intensity = st.selectbox("Độ mạnh chuyển động", ["low", "medium", "high"], index=1)
+        with c1: duration = st.number_input("Thời lượng (s)", min_value=2, max_value=8, value=5, step=1)
+        with c2: aspect_ratio = st.selectbox("Tỷ lệ khung", ["16:9","9:16","1:1","21:9"], index=0)
+        with c3: fps = st.selectbox("FPS", [24,25,30], index=0)
+        with c4: motion_intensity = st.selectbox("Độ mạnh chuyển động", ["low","medium","high"], index=1)
 
     is_style_disabled = (uploaded_file is not None)
     selected_style = st.selectbox(
@@ -292,16 +348,12 @@ with col2:
         key="user_idea"
     )
 
-    # ---- 2 NÚT NGANG HÀNG ----
-    bcol1, bcol2 = st.columns([1, 1])
+    bcol1, bcol2 = st.columns([1,1])
     with bcol1:
-        submitted = st.button("Tạo kịch bản", key="btn_create", use_container_width=True)
+        submitted = st.button("Tạo kịch bản", use_container_width=True)
     with bcol2:
-        st.button("Làm mới", key="btn_reset", use_container_width=True, on_click=reset_form)
+        st.button("Làm mới", use_container_width=True, on_click=reset_form)
 
-    # ==========================
-    # XỬ LÝ TẠO PROMPT
-    # ==========================
     if submitted:
         if not user_idea.strip():
             st.warning("Vui lòng nhập ý tưởng của bạn.")
@@ -312,8 +364,7 @@ with col2:
             with st.spinner("Đạo diễn AI đang phân tích và sáng tạo..."):
                 try:
                     request_for_gemini = META_PROMPT_FOR_GEMINI.format(
-                        user_idea=user_idea.strip(),
-                        style=final_style_for_model
+                        user_idea=user_idea.strip(), style=final_style_for_model
                     )
                     response = gemini_model.generate_content(request_for_gemini)
                     raw = (response.text or "").strip()
@@ -325,105 +376,98 @@ with col2:
                         extracted = safe_json_loads(raw)
                     except Exception:
                         st.error("Lỗi: Không tìm thấy JSON hợp lệ trong phản hồi của AI.")
-                        with st.expander("Xem dữ liệu thô từ AI"):
-                            st.code(raw)
+                        with st.expander("Xem dữ liệu thô từ AI"): st.code(raw)
                         st.stop()
 
-                    # === Bổ sung: đảm bảo dialogue tiếng Việt & chuẩn hoá tên ===
-                    extracted["dialogue"] = ensure_dialogue(user_idea, extracted.get("dialogue", ""))
+                    # Chuẩn hóa tên (trừ dialogue)
                     extracted = canonicalize_names(extracted)
 
+                    # --- Dialogue logic ---
+                    speech = has_speech_intent(user_idea)
+                    multi   = has_multi_dialogue_intent(user_idea)
+
+                    dialogue_section = "No dialogue."
+                    audio_section = "No speech; only ambience and foley."
+                    final_dialogue_single = ""
+
+                    if speech:
+                        if multi:
+                            # Ưu tiên dialogue_lines nếu có
+                            lines = extracted.get("dialogue_lines") if isinstance(extracted.get("dialogue_lines"), list) else []
+                            rendered, voices = [], []
+                            for item in lines:
+                                spk = normalize_speaker(item.get("speaker","Speaker"))
+                                line_vi = (item.get("line_vi") or "").strip()
+                                if not line_vi: continue
+                                tone = item.get("voice_tone","").strip()
+                                rendered.append(f'{spk}: "{line_vi}"')
+                                voices.append(f"{spk}: {tone or 'natural'}")
+                            if rendered:
+                                dialogue_section = "Use the following lines exactly (Vietnamese):\n" + "\n".join(rendered)
+                                audio_section = "Generate separate Vietnamese voices with these tones: " + "; ".join(voices) + "."
+                            else:
+                                # fallback: một câu
+                                final_dialogue_single = (extracted.get("dialogue") or "").strip() or craft_dialogue(user_idea)
+                        else:
+                            final_dialogue_single = (extracted.get("dialogue") or "").strip() or craft_dialogue(user_idea)
+
+                        if final_dialogue_single:
+                            dialogue_section = f'Animate mouth to sync with: "{final_dialogue_single}".'
+                            voice = extracted.get("voice_type", "a natural voice")
+                            audio_section = f"Generate natural Vietnamese speech, spoken by {voice}."
+
+                    # --- Build prompt data ---
                     g = lambda k, d: extracted.get(k, d)
                     prompt_data = {
-                        "subject_description": g("subject_description", "a subject"),
-                        "core_action": g("core_action", "a simple action"),
-                        "setting_description": g("setting_description", "a location"),
-                        "dialogue": g("dialogue", ""),
-                        "mood": g("mood", "neutral"),
-                        "camera_motion": g("camera_motion", "dynamic tracking with gentle push-in"),
-                        "lens": g("lens", "35mm"),
-                        "aperture": g("aperture", "f/2.8"),
-                        "shutter": g("shutter", "1/100"),
-                        "focus_pulling": g("focus_pulling", "rack focus on key beats"),
-                        "lighting": g("lighting", "soft key light with warm rim; motivated practicals"),
-                        "performance_direction": g("performance_direction", "warm smile; confident posture"),
-                        "beats": g("beats", "establishing, greet, response"),
-                        "action_design": g("action_design", "teacher walks to the front, turns to students"),
-                        "shot_list": g("shot_list", "MS entering; CU smile; WS classroom; MS speaking"),
-                        "environment_fx": g("environment_fx", "soft dust motes in window light"),
-                        "color_grade": g("color_grade", "natural warm tones"),
-                        "speed_ramping": g("speed_ramping", "none"),
-                        "continuity_anchors": g("continuity_anchors", "whiteboard behind teacher"),
-                        "visual_effects": g("visual_effects", "none"),
-                        "negative_cues": g("negative_cues", "flicker, artifacts, warped perspective"),
-                        "voice_type": g("voice_type", "calm male voice"),
-                        "gesture": g("gesture", "gentle nod"),
-                        "sound_design": g("sound_design", "classroom ambience; clear teacher voice"),
-                        "postprocessing": g("postprocessing", "subtle film grain"),
+                        "subject_description": g("subject_description","a subject"),
+                        "core_action": g("core_action","a simple action"),
+                        "setting_description": g("setting_description","a location"),
+                        "mood": g("mood","neutral"),
+                        "camera_motion": g("camera_motion","gentle push-in"),
+                        "lens": g("lens","35mm"),
+                        "aperture": g("aperture","f/2.8"),
+                        "shutter": g("shutter","1/100"),
+                        "focus_pulling": g("focus_pulling","rack focus on key beats"),
+                        "lighting": g("lighting","soft key light with warm rim"),
+                        "performance_direction": g("performance_direction","confident, kind"),
+                        "beats": g("beats","establishing, action, resolve"),
+                        "action_design": g("action_design","clean, believable movement"),
+                        "shot_list": g("shot_list","wide establishing; mid; close-up"),
+                        "environment_fx": g("environment_fx","subtle dust motes"),
+                        "color_grade": g("color_grade","warm natural"),
+                        "speed_ramping": g("speed_ramping","none"),
+                        "continuity_anchors": g("continuity_anchors","whiteboard at back"),
+                        "visual_effects": g("visual_effects","none"),
+                        "negative_cues": g("negative_cues","flicker, artifacts, deformed hands"),
+                        "voice_type": g("voice_type","warm mid-range male"),
+                        "gesture": g("gesture","gentle nod"),
+                        "sound_design": g("sound_design","classroom ambience; clear speech"),
+                        "postprocessing": g("postprocessing","subtle film grain"),
                         "duration": duration,
                         "aspect_ratio": aspect_ratio,
                         "fps": fps,
                         "motion_intensity": motion_intensity,
+                        "style": "In the style of the provided image" if uploaded_file else style_en,
+                        "audio_section": audio_section,
+                        "dialogue_section": dialogue_section,
                     }
-
-                    # Style xuất ra tiếng Anh thuần
-                    prompt_data["style"] = "In the style of the provided image" if uploaded_file else style_en
-
-                    # Audio line (giữ dialogue tiếng Việt)
-                    if prompt_data["dialogue"]:
-                        prompt_data["audio_section"] = f'Animate mouth to sync with: "{prompt_data["dialogue"]}". Generate natural Vietnamese speech, spoken by {prompt_data["voice_type"]}.'
-                    else:
-                        prompt_data["audio_section"] = "No speech; only ambience and foley."
 
                     template = IMAGE_TO_VIDEO_TEMPLATE if uploaded_file else TEXT_TO_VIDEO_TEMPLATE
                     st.session_state.final_prompt = template.format(**prompt_data)
-
-                    st.rerun()  # ngoài callback: rerun để show kết quả ngay
+                    st.rerun()
 
                 except Exception as e:
                     st.error("Đã xảy ra lỗi khi tạo kịch bản. Vui lòng thử lại.")
-                    with st.expander("Chi tiết kỹ thuật"):
-                        st.exception(e)
+                    with st.expander("Chi tiết kỹ thuật"): st.exception(e)
 
 # ==============================
-# OUTPUT + COPY BUTTON
+# OUTPUT (có nút copy built-in)
 # ==============================
 if st.session_state.final_prompt:
     st.divider()
     st.subheader("Kịch bản Prompt chi tiết")
-
-    st.text_area(
-        "Prompt (tiếng Anh) đã được tối ưu cho AI:",
-        value=st.session_state.final_prompt,
-        height=420,
-        key="final_prompt_view"
-    )
-
-    # Nút Sao chép prompt (giống “sao chép mã”)
-    copy_block = f"""
-    <div style="display:flex; justify-content:flex-end; margin-top:8px;">
-      <button id="copyBtn" style="
-        background:#f2f2f2; border:1px solid #d1d1d6; border-radius:10px;
-        padding:8px 14px; cursor:pointer;">
-        Sao chép prompt
-      </button>
-    </div>
-    <script>
-      const btn = document.getElementById('copyBtn');
-      btn.addEventListener('click', async () => {{
-        try {{
-          const txt = `{st.session_state.final_prompt.replace("`","\\`")}`;
-          await navigator.clipboard.writeText(txt);
-          btn.innerText = 'Đã sao chép ✓';
-          setTimeout(() => btn.innerText = 'Sao chép prompt', 1500);
-        }} catch (e) {{
-          btn.innerText = 'Không sao chép được';
-          setTimeout(() => btn.innerText = 'Sao chép prompt', 1500);
-        }}
-      }});
-    </script>
-    """
-    st.markdown(copy_block, unsafe_allow_html=True)
+    st.markdown("**Prompt (tiếng Anh) đã được tối ưu cho AI:**")
+    st.code(st.session_state.final_prompt, language="text")  # có nút Sao chép ở góc phải
 
 # ==============================
 # FOOTER
