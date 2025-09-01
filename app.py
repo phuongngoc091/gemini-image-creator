@@ -162,11 +162,11 @@ with col1:
     st.subheader("Ý tưởng hình sang video")
     uploaded_file = st.file_uploader("Tải ảnh lên (tùy chọn)", type=["png", "jpg", "jpeg"])
     if uploaded_file:
-        st.image(Image.open(uploaded_file), caption="Khung hình khởi đầu", use_container_width=True)
+        st.image(Image.open(uploaded_file), caption="Khung hình khởi đầu", use_column_width=True)
 
     st.image(
         "https://ia600905.us.archive.org/0/items/Donate_png/1111111.jpg",
-        caption="Donate to support me",
+        caption="Donate",
         width=250
     )
 
@@ -219,8 +219,20 @@ with col2:
                     st.error("Lỗi: AI không trả về nội dung. Yêu cầu của bạn có thể đã bị chặn. Vui lòng thử lại với một ý tưởng khác.")
                     st.stop()
 
-                response_text = response.text.replace("```json", "").replace("```", "").strip()
-                extracted_data = json.loads(response_text)
+                # --- LOGIC MỚI ĐỂ TRÍCH XUẤT JSON AN TOÀN HƠN ---
+                # Tìm vị trí bắt đầu và kết thúc của khối JSON
+                start_index = response.text.find('{')
+                end_index = response.text.rfind('}') + 1
+                
+                if start_index != -1 and end_index > start_index:
+                    response_text = response.text[start_index:end_index]
+                    extracted_data = json.loads(response_text)
+                else:
+                    # Nếu không tìm thấy JSON, báo lỗi
+                    st.error("Lỗi: Không tìm thấy dữ liệu JSON hợp lệ trong phản hồi của AI.")
+                    st.write("Dữ liệu thô từ AI (để gỡ lỗi):", response.text)
+                    st.stop()
+
 
                 prompt_data = {
                     'style': final_style,
@@ -249,7 +261,7 @@ with col2:
                 st.text_area("Prompt (tiếng Anh) đã được tối ưu cho AI tạo video:", value=final_prompt, height=350)
 
             except json.JSONDecodeError:
-                st.error("Lỗi: AI trả về định dạng không hợp lệ. Vui lòng thử lại.")
+                st.error("Lỗi: AI trả về định dạng không hợp lệ, không phải JSON.")
                 st.write("Dữ liệu thô từ AI (để gỡ lỗi):", response_text)
             except Exception as e:
                 st.error(f"Đã xảy ra lỗi: {e}")
