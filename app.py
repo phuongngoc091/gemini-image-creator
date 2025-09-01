@@ -156,7 +156,3 @@ with col2:
                     st.write("Dữ liệu thô từ AI:", response_text)
                 except Exception as e:
                     st.error(f"Đã xảy ra lỗi không mong muốn: {e}")
-
----
-## ## Cập nhật file `requirements.txt`
-Hãy đảm bảo file `requirements.txt` của bạn có đủ các thư viện sau:
