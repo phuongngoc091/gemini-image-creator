@@ -39,7 +39,6 @@ st.markdown(APPLE_STYLE_CSS, unsafe_allow_html=True)
 # --- KHỞI TẠO SESSION STATE ---
 if 'final_prompt' not in st.session_state:
     st.session_state.final_prompt = ""
-# Biến để lưu trữ giá trị của ô text_area
 if 'user_idea' not in st.session_state:
     st.session_state.user_idea = ""
 
@@ -131,7 +130,7 @@ with col2:
     if is_style_disabled:
         st.info("ℹ️ Phong cách sẽ được tự động phân tích từ hình ảnh bạn đã tải lên.")
 
-    # Sử dụng st.session_state.user_idea để duy trì giá trị
+    # SỬA LỖI: Sử dụng key 'user_idea' thay vì 'user_idea_input'
     user_idea = st.text_area(
         "Nhập ý tưởng video bằng tiếng Việt:", height=210,
         placeholder="Ví dụ: Thầy giáo bước lên bục giảng, mỉm cười nói: 'Xin chào các em'",
@@ -142,7 +141,7 @@ with col2:
     with form_col1:
         submitted = st.button("Tạo kịch bản", use_container_width=True)
     with form_col2:
-        # Sửa lỗi: Gán lại st.session_state.user_idea, không phải user_idea_input
+        # SỬA LỖI: Gán lại st.session_state.user_idea
         if st.button("Làm mới", use_container_width=True):
             st.session_state.user_idea = ""
             st.session_state.final_prompt = ""
