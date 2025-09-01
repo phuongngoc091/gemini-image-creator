@@ -79,10 +79,17 @@ with col2:
 
     if submitted and user_idea:
         with st.spinner("🤖 Biên kịch AI đang phân tích..."):
+            response_text = "" # Khởi tạo biến để tránh lỗi
             try:
                 # Bước 1: Gọi AI để trích xuất JSON
                 request_for_gemini = META_PROMPT_FOR_GEMINI.format(user_idea=user_idea)
                 response = gemini_model.generate_content(request_for_gemini)
+
+                # --- BƯỚC KIỂM TRA PHẢN HỒI ---
+                if not response.text or not response.text.strip():
+                    st.error("Lỗi: AI không trả về nội dung. Yêu cầu của bạn có thể đã bị chặn vì lý do an toàn hoặc không hợp lệ. Vui lòng thử lại với một ý tưởng khác.")
+                    st.stop()
+
                 response_text = response.text.replace("```json", "").replace("```", "").strip()
                 extracted_data = json.loads(response_text)
 
@@ -114,9 +121,11 @@ with col2:
                 st.subheader("🎬 Kịch bản Prompt chi tiết (Tiếng Anh)")
                 st.text_area("Prompt cuối cùng:", value=final_prompt, height=400)
 
+            except json.JSONDecodeError:
+                st.error("Lỗi: AI trả về định dạng không hợp lệ, không phải JSON.")
+                st.write("Dữ liệu thô từ AI (để gỡ lỗi):", response_text)
             except Exception as e:
                 st.error(f"Đã xảy ra lỗi: {e}")
-                st.write("Dữ liệu thô từ AI (để gỡ lỗi):", response_text)
 
     elif submitted:
         st.warning("Vui lòng nhập ý tưởng của bạn.")
