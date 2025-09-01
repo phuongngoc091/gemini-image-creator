@@ -149,21 +149,20 @@ with col2:
                         extracted_data['audio_section'] = "No speech audio, only ambient sounds matching the scene."
 
                     # Đoạn code mới linh hoạt hơn
-try:
-    final_prompt = template.format(
-        subject_description=extracted_data.get('subject_description', 'a person in a scene'),
-        core_action=extracted_data.get('core_action', 'performing an action'),
-        setting_description=extracted_data.get('setting_description', 'an interesting setting'),
-        dialogue_section=extracted_data.get('dialogue_section', 'No dialogue.'),
-        audio_section=extracted_data.get('audio_section', 'No speech audio.'),
-        gesture=extracted_data.get('gesture', 'a natural gesture'),
-        visual_effects=extracted_data.get('visual_effects', 'cinematic effects'),
-        mood=extracted_data.get('mood', 'an interesting mood')
-    )
-except KeyError as e:
-    st.error(f"Lỗi: AI đã không trả về đủ các trường dữ liệu cần thiết. Vui lòng thử lại. Trường bị thiếu: {e}")
-    st.stop() # Dừng thực thi nếu có lỗi nghiêm trọng
-
+                    try:
+                        final_prompt = template.format(
+                            subject_description=extracted_data.get('subject_description', 'a person in a scene'),
+                            core_action=extracted_data.get('core_action', 'performing an action'),
+                            setting_description=extracted_data.get('setting_description', 'an interesting setting'),
+                            dialogue_section=extracted_data.get('dialogue_section', 'No dialogue.'),
+                            audio_section=extracted_data.get('audio_section', 'No speech audio.'),
+                            gesture=extracted_data.get('gesture', 'a natural gesture'),
+                            visual_effects=extracted_data.get('visual_effects', 'cinematic effects'),
+                            mood=extracted_data.get('mood', 'an interesting mood')
+                        )
+                    except KeyError as e:
+                        st.error(f"Lỗi: AI đã không trả về đủ các trường dữ liệu cần thiết. Vui lòng thử lại. Trường bị thiếu: {e}")
+                        st.stop() # Dừng thực thi nếu có lỗi nghiêm trọng
                     # Hiển thị kết quả
                     st.divider()
                     st.subheader("🎬 Kịch bản Prompt chi tiết (Tiếng Anh)")
