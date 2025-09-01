@@ -169,7 +169,7 @@ with col2:
     user_idea = st.text_area(
         "Nhập ý tưởng video bằng tiếng Việt:",
         height=210,
-        placeholder="Ví dụ: một cô gái đi trên Cầu Vàng có tuyết rơi và nói 'Chào mọi người! Tuyết rơi đẹp không?'",
+        placeholder="Ví dụ: Thầy giáo bước lên bục giảng, mỉm cười nói: 'Xin chào các em'",
         key="user_idea_input"
     )
     
