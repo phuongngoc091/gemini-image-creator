@@ -11,7 +11,7 @@ st.set_page_config(
 )
 
 # --- Giao diện chính ---
-st.title("🎨 Trình tạo ảnh AI bằng Gemini 1.5 Flash")
+st.title("🎨 Trình tạo ảnh AI bằng Gemini 2.5 Flash")
 st.write("Mô tả ý tưởng của bạn thành lời văn, AI sẽ biến nó thành hình ảnh!")
 
 # --- Phần cấu hình API Key ở thanh bên (sidebar) ---
@@ -59,7 +59,7 @@ if submitted:
         with st.spinner("🤖 AI đang sáng tạo, vui lòng chờ trong giây lát..."):
             try:
                 # Chọn model và gọi API
-                model = genai.GenerativeModel(model_name="gemini-1.5-flash")
+                model = genai.GenerativeModel(model_name="gemini-2.5-flash")
                 response = model.generate_content(
                     prompt,
                     generation_config={"response_mime_type": "image/jpeg"}
