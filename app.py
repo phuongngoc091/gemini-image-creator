@@ -11,28 +11,42 @@ st.set_page_config(layout="wide", page_title="Viết prompt tạo video với ph
 
 APPLE_STYLE_CSS = """
 <style>
-    body, .stApp { background-color: #f0f2f5; color: #000000; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-    h1, h2, h3 { font-weight: 600; }
-    .stApp > header { background-color: transparent; }
-    .stButton > button {
-        background-color: #007aff; color: white; border: none; border-radius: 12px;
-        padding: 10px 24px; transition: all 0.2s ease-in-out; font-weight: 500;
-    }
-    .stButton > button:hover { background-color: #0056b3; color: white; }
-    .custom-gray-btn .stButton > button { background-color: #e9e9eb; color: #000000; }
-    .custom-gray-btn .stButton > button:hover { background-color: #d1d1d6; }
-    .stTextArea textarea, .stTextInput input, .stSelectbox div[data-baseweb="select"] > div {
-        background-color: #ffffff; border: 1px solid #d1d1d6; border-radius: 12px; padding: 10px;
-    }
-    .stTextArea textarea:focus, .stTextInput input:focus, .stSelectbox div[data-baseweb="select"] > div:focus-within {
-        border-color: #007aff; box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.2);
-    }
-    .stFileUploader { background-color: #ffffff; border: 2px dashed #d1d1d6; border-radius: 12px; padding: 8px; }
-    .stSidebar { background-color: #f0f2f5; border-right: 1px solid #d1d1d6; }
-    .footer {
-        position: fixed; left: 0; bottom: 0; width: 100%; background-color: #f0f2f5;
-        color: #8a8a8a; text-align: center; padding: 10px; font-size: 14px;
-    }
+  body, .stApp { background-color: #f0f2f5; color: #000000; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  h1, h2, h3 { font-weight: 600; }
+  .stApp > header { background-color: transparent; }
+
+  /* Buttons */
+  .stButton > button {
+      background-color: #007aff; color: white; border: none; border-radius: 12px;
+      padding: 10px 24px; transition: all 0.2s ease-in-out; font-weight: 500;
+  }
+  .stButton > button:hover { background-color: #0056b3; color: white; }
+  .custom-gray-btn .stButton > button { background-color: #e9e9eb; color: #000000; }
+  .custom-gray-btn .stButton > button:hover { background-color: #d1d1d6; color: #000000; }
+
+  /* Text inputs */
+  .stTextArea textarea, .stTextInput input {
+      background-color: #ffffff; border: 1px solid #d1d1d6; border-radius: 12px; padding: 10px;
+  }
+  .stTextArea textarea:focus, .stTextInput input:focus {
+      border-color: #007aff; box-shadow: 0 0 0 2px rgba(0,122,255,.2);
+  }
+
+  /* ✅ Safe styling cho selectbox (không động > div) */
+  .stSelectbox [data-baseweb="select"] {
+      background-color: #ffffff; border: 1px solid #d1d1d6; border-radius: 12px;
+  }
+  .stSelectbox [data-baseweb="select"]:focus-within {
+      border-color: #007aff; box-shadow: 0 0 0 2px rgba(0,122,255,.2);
+  }
+  .stSelectbox [data-baseweb="select"] * { color: #000000; }
+
+  .stFileUploader { background-color: #ffffff; border: 2px dashed #d1d1d6; border-radius: 12px; padding: 8px; }
+  .stSidebar { background-color: #f0f2f5; border-right: 1px solid #d1d1d6; }
+  .footer {
+      position: fixed; left: 0; bottom: 0; width: 100%; background-color: #f0f2f5;
+      color: #8a8a8a; text-align: center; padding: 10px; font-size: 14px;
+  }
 </style>
 """
 st.markdown(APPLE_STYLE_CSS, unsafe_allow_html=True)
@@ -50,7 +64,6 @@ STYLE_OPTIONS = [
 ]
 DEFAULT_STYLE = STYLE_OPTIONS[0]
 
-# Prompt template cho 2 trường hợp
 IMAGE_TO_VIDEO_TEMPLATE = """
 Style: {style}
 Initial Frame: Use the provided image of {subject_description}.
@@ -77,7 +90,6 @@ Audio: {audio_section}
 Technical: duration {duration}s | aspect ratio {aspect_ratio} | fps {fps} | motion intensity {motion_intensity}
 """.strip()
 
-# Meta-prompt nâng cấp: bắt buộc JSON tiếng Anh (trừ dialogue), thêm nhiều trường điện ảnh
 META_PROMPT_FOR_GEMINI = """
 You are a film director AI. Convert a short Vietnamese idea into a production-ready JSON for a video generation model.
 
@@ -89,11 +101,11 @@ HARD REQUIREMENTS:
 FIELDS TO PRODUCE (keys):
 - subject_description, core_action, setting_description, mood
 - dialogue (VIETNAMESE, under 8 seconds total)
-- camera_motion (concise), lens (e.g., "35mm"), aperture (e.g., "f/2.8"), shutter (e.g., "1/100")
-- lighting (cinematic description), performance_direction (actor/character behavior notes), beats (comma-separated micro-beats)
-- visual_effects (positive VFX), negative_cues (things to avoid: distortions, extra limbs, flicker, deformed hands, artifacts)
-- voice_type (e.g., "warm female voice"), gesture, sound_design (ambience, foley, music cue)
-- duration (seconds, number 2–8), aspect_ratio (e.g., "16:9"), fps (e.g., 24), motion_intensity ("low" | "medium" | "high")
+- camera_motion, lens (e.g., "35mm"), aperture (e.g., "f/2.8"), shutter (e.g., "1/100")
+- lighting, performance_direction, beats (comma-separated micro-beats)
+- visual_effects, negative_cues
+- voice_type, gesture, sound_design
+- duration (2–8), aspect_ratio ("16:9" | "9:16" | "1:1" | "21:9"), fps (24 | 25 | 30), motion_intensity ("low" | "medium" | "high")
 
 CREATIVE PROCESS:
 - Read the user's idea and selected style: "{style}".
@@ -104,7 +116,7 @@ User Idea (Vietnamese): "{user_idea}"
 """.strip()
 
 # ==============================
-# SESSION STATE (không set uploaded_image để tránh xung đột)
+# SESSION STATE (KHÔNG init uploaded_image để tránh xung đột)
 # ==============================
 if "final_prompt" not in st.session_state:
     st.session_state.final_prompt = ""
@@ -114,12 +126,11 @@ if "style" not in st.session_state:
     st.session_state.style = DEFAULT_STYLE
 
 def reset_form():
-    """Xoá toàn bộ dữ liệu form và rerun (an toàn với file_uploader)."""
-    st.session_state.pop("uploaded_image", None)  # quan trọng: xoá key thay vì gán None
+    """Xoá toàn bộ dữ liệu form. Callback tự rerun, không gọi st.rerun() ở đây."""
+    st.session_state.pop("uploaded_image", None)  # quan trọng: xoá key file_uploader, không gán None
     st.session_state["user_idea"] = ""
     st.session_state["final_prompt"] = ""
     st.session_state["style"] = DEFAULT_STYLE
-    st.rerun()
 
 # ==============================
 # SIDEBAR: API Key
@@ -161,7 +172,7 @@ with col1:
     uploaded_file = st.file_uploader(
         "Tải ảnh lên (tùy chọn)",
         type=["png", "jpg", "jpeg"],
-        key="uploaded_image"  # để có thể xoá bằng pop() khi reset
+        key="uploaded_image"   # có key để reset bằng pop()
     )
     if uploaded_file:
         try:
@@ -173,7 +184,7 @@ with col1:
 with col2:
     st.subheader("Ý tưởng của bạn")
 
-    # Tùy chọn nâng cao kỹ thuật
+    # Tùy chọn kỹ thuật
     with st.expander("Tùy chọn nâng cao (kỹ thuật)", expanded=False):
         c1, c2, c3, c4 = st.columns(4)
         with c1:
@@ -230,7 +241,6 @@ with col2:
                     )
                     response = gemini_model.generate_content(request_for_gemini)
 
-                    # Kiểm tra nội dung trả về
                     if not getattr(response, "text", None) or not response.text.strip():
                         st.error("Lỗi: AI không trả về nội dung. Yêu cầu của bạn có thể đã bị chặn.")
                         st.stop()
@@ -247,7 +257,6 @@ with col2:
                     response_text = raw_text[start_index:end_index]
                     extracted_data = json.loads(response_text)
 
-                    # Ghép dữ liệu đầy đủ + mặc định hợp lý
                     def _get(k, default): return extracted_data.get(k, default)
 
                     prompt_data = {
@@ -267,7 +276,6 @@ with col2:
                         "lighting": _get("lighting", "soft key light with warm rim"),
                         "performance_direction": _get("performance_direction", "subtle smile, confident posture"),
                         "beats": _get("beats", "establishing, action, close-up, resolve"),
-                        # kỹ thuật (ghi đè bằng UI nếu có)
                         "duration": duration,
                         "aspect_ratio": aspect_ratio,
                         "fps": fps,
@@ -276,22 +284,20 @@ with col2:
 
                     prompt_data["style"] = "In the style of the provided image" if uploaded_file else final_style
 
-                    # Thoại & audio
                     if prompt_data["dialogue"]:
                         prompt_data["audio_section"] = f'Generate natural Vietnamese speech, spoken by {prompt_data["voice_type"]}.'
                     else:
                         prompt_data["audio_section"] = "No speech; only ambience and foley."
 
-                    # Sound design
                     prompt_data["sound_design"] = _get(
                         "sound_design",
                         "subtle room tone, soft footsteps, light music bed"
                     )
 
-                    # Chọn template theo việc có ảnh hay không
                     template = IMAGE_TO_VIDEO_TEMPLATE if uploaded_file else TEXT_TO_VIDEO_TEMPLATE
                     st.session_state.final_prompt = template.format(**prompt_data)
 
+                    # ngoài callback -> rerun để hiển thị kết quả ngay
                     st.rerun()
 
                 except json.JSONDecodeError as je:
