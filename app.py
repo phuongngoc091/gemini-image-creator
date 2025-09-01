@@ -223,4 +223,152 @@ st.caption("Biến ý tưởng đơn giản của bạn thành một kịch bả
 col1, col2 = st.columns([1, 2], gap="large")
 
 with col1:
-    st.subheader("Ý tưởng h
+    st.subheader("Ý tưởng hình sang video")
+    uploaded_file = st.file_uploader(
+        "Tải ảnh lên (tùy chọn)",
+        type=["png", "jpg", "jpeg"],
+        key="uploaded_image"
+    )
+    if uploaded_file:
+        try:
+            st.image(Image.open(uploaded_file), caption="Khung hình khởi đầu", use_container_width=True)
+        except Exception:
+            st.warning("Không hiển thị được ảnh vừa tải. Vui lòng thử ảnh khác.")
+    st.image("https://ia600905.us.archive.org/0/items/Donate_png/1111111.jpg", caption="Donate", width=250)
+
+with col2:
+    st.subheader("Ý tưởng của bạn")
+
+    with st.expander("Tùy chọn nâng cao (kỹ thuật)", expanded=False):
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            duration = st.number_input("Thời lượng (s)", min_value=2, max_value=8, value=5, step=1)
+        with c2:
+            aspect_ratio = st.selectbox("Tỷ lệ khung", ["16:9", "9:16", "1:1", "21:9"], index=0)
+        with c3:
+            fps = st.selectbox("FPS", [24, 25, 30], index=0)
+        with c4:
+            motion_intensity = st.selectbox("Độ mạnh chuyển động", ["low", "medium", "high"], index=1)
+
+    is_style_disabled = (uploaded_file is not None)
+    selected_style = st.selectbox(
+        "Chọn phong cách video:",
+        options=STYLE_OPTIONS,
+        index=STYLE_OPTIONS.index(st.session_state.style) if st.session_state.style in STYLE_OPTIONS else 0,
+        key="style",
+        disabled=is_style_disabled,
+        help="Khi tải ảnh lên, phong cách sẽ được phân tích từ ảnh."
+    )
+    if is_style_disabled:
+        st.info("ℹ️ Phong cách sẽ được tự động phân tích từ hình ảnh bạn đã tải lên.")
+
+    user_idea = st.text_area(
+        "Nhập ý tưởng video bằng tiếng Việt:",
+        height=210,
+        placeholder="Ví dụ: Thầy giáo bước lên bục giảng, mỉm cười nói: 'Xin chào các em'",
+        key="user_idea"
+    )
+
+    # ---- BUTTON ROW (2 nút luôn thẳng hàng) ----
+    bcol1, bcol2 = st.columns([1, 1])
+    with bcol1:
+        submitted = st.button("Tạo kịch bản", key="btn_create", use_container_width=True)
+    with bcol2:
+        reset_clicked = st.button("Làm mới", key="btn_reset", use_container_width=True)
+
+    if reset_clicked:
+        reset_form()
+        st.rerun()
+
+    # ==========================
+    # XỬ LÝ TẠO PROMPT
+    # ==========================
+    if submitted:
+        if not user_idea.strip():
+            st.warning("Vui lòng nhập ý tưởng của bạn.")
+        else:
+            # dùng EN-only cho style
+            selected_style_en = style_to_en(selected_style)
+            final_style_for_model = "Derived from the provided image" if uploaded_file else selected_style_en
+
+            with st.spinner("Đạo diễn AI đang phân tích và sáng tạo..."):
+                try:
+                    request_for_gemini = META_PROMPT_FOR_GEMINI.format(
+                        user_idea=user_idea.strip(),
+                        style=final_style_for_model
+                    )
+                    response = gemini_model.generate_content(request_for_gemini)
+                    raw = (response.text or "").strip()
+                    if not raw:
+                        st.error("Lỗi: AI không trả về nội dung.")
+                        st.stop()
+
+                    try:
+                        extracted_data = safe_json_loads(raw)
+                    except Exception:
+                        st.error("Lỗi: Không tìm thấy JSON hợp lệ trong phản hồi của AI.")
+                        with st.expander("Xem dữ liệu thô từ AI"):
+                            st.code(raw)
+                        st.stop()
+
+                    def _get(k, default): return extracted_data.get(k, default)
+
+                    prompt_data = {
+                        "subject_description": _get("subject_description", "a subject"),
+                        "core_action": _get("core_action", "a simple action"),
+                        "setting_description": _get("setting_description", "a location"),
+                        "dialogue": _get("dialogue", ""),
+                        "mood": _get("mood", "neutral"),
+                        "visual_effects": _get("visual_effects", "subtle particles"),
+                        "negative_cues": _get("negative_cues", "flicker, artifacts, extra limbs, deformed hands"),
+                        "voice_type": _get("voice_type", "a warm voice"),
+                        "gesture": _get("gesture", "natural gesture"),
+                        "camera_motion": _get("camera_motion", "gentle push-in"),
+                        "lens": _get("lens", "35mm"),
+                        "aperture": _get("aperture", "f/2.8"),
+                        "shutter": _get("shutter", "1/100"),
+                        "lighting": _get("lighting", "soft key light with warm rim"),
+                        "performance_direction": _get("performance_direction", "subtle smile, confident posture"),
+                        "beats": _get("beats", "establishing, action, close-up, resolve"),
+                        "duration": duration,
+                        "aspect_ratio": aspect_ratio,
+                        "fps": fps,
+                        "motion_intensity": motion_intensity,
+                    }
+
+                    # EN-only trong output
+                    prompt_data["style"] = "In the style of the provided image" if uploaded_file else selected_style_en
+
+                    if prompt_data["dialogue"]:
+                        prompt_data["audio_section"] = f'Generate natural Vietnamese speech, spoken by {prompt_data["voice_type"]}.'
+                    else:
+                        prompt_data["audio_section"] = "No speech; only ambience and foley."
+
+                    prompt_data["sound_design"] = _get("sound_design", "subtle room tone, soft footsteps, light music bed")
+
+                    template = IMAGE_TO_VIDEO_TEMPLATE if uploaded_file else TEXT_TO_VIDEO_TEMPLATE
+                    st.session_state.final_prompt = template.format(**prompt_data)
+
+                    st.rerun()
+
+                except Exception as e:
+                    st.error("Đã xảy ra lỗi khi tạo kịch bản. Vui lòng thử lại.")
+                    with st.expander("Chi tiết kỹ thuật"):
+                        st.exception(e)
+
+# ==============================
+# OUTPUT
+# ==============================
+if st.session_state.final_prompt:
+    st.divider()
+    st.subheader("Kịch bản Prompt chi tiết")
+    st.text_area(
+        "Prompt (tiếng Anh) đã được tối ưu cho AI:",
+        value=st.session_state.final_prompt,
+        height=380
+    )
+
+# ==============================
+# FOOTER
+# ==============================
+st.markdown('<div class="footer">Thiết kế bởi: phuongngoc091 | 0932 468 218</div>', unsafe_allow_html=True)
