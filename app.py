@@ -2,7 +2,7 @@
 import streamlit as st
 import google.generativeai as genai
 from PIL import Image
-import json, re
+import json, re, unicodedata
 from typing import Any, Dict
 
 # ==============================
@@ -68,6 +68,37 @@ def style_to_en(label: str) -> str:
     m = re.search(r"\(([^)]+)\)", label)
     return m.group(1).strip() if m else label.strip()
 
+def strip_diacritics(text: str) -> str:
+    """Loại dấu tiếng Việt: 'Phương Ngọc' -> 'Phuong Ngoc'."""
+    if not isinstance(text, str):
+        return text
+    nfkd = unicodedata.normalize("NFKD", text)
+    return "".join([c for c in nfkd if not unicodedata.combining(c)])
+
+def canonicalize_names(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Chuẩn hoá tên riêng sang không dấu cho mọi field trừ dialogue."""
+    keys = [
+        "subject_description","core_action","setting_description","mood",
+        "camera_motion","lens","aperture","shutter","focus_pulling","lighting",
+        "performance_direction","beats","action_design","shot_list","environment_fx",
+        "color_grade","speed_ramping","continuity_anchors","visual_effects",
+        "negative_cues","voice_type","gesture","sound_design","postprocessing"
+    ]
+    for k in keys:
+        if k in data and isinstance(data[k], str):
+            data[k] = strip_diacritics(data[k])
+    return data
+
+def ensure_dialogue(user_idea_vi: str, dialogue: str | None) -> str:
+    """Nếu dialogue rỗng -> tạo câu chào ngắn bằng tiếng Việt."""
+    if dialogue and dialogue.strip():
+        return dialogue.strip()
+    # fallback tiếng Việt ~1 câu, < 8s
+    # nếu ý tưởng chứa 'chào' => dùng 'Xin chào các em'
+    if "chào" in user_idea_vi.lower():
+        return "Xin chào các em, hôm nay chúng ta cùng bắt đầu nhé!"
+    return "Chào các em, chúng ta bắt đầu bài học nhé!"
+
 def safe_json_loads(raw: str) -> Dict[str, Any]:
     """Parse JSON dù model có trả kèm markdown/quote lạ."""
     t = raw.strip()
@@ -80,7 +111,7 @@ def safe_json_loads(raw: str) -> Dict[str, Any]:
     return json.loads(t)
 
 # ==============================
-# PROMPT TEMPLATES (nâng cấp điện ảnh)
+# PROMPT TEMPLATES (điện ảnh)
 # ==============================
 IMAGE_TO_VIDEO_TEMPLATE = """
 Style: {style}
@@ -133,23 +164,20 @@ FIELDS (keys)
 - dialogue (VIETNAMESE, max ~8s)
 - camera_motion, lens (e.g. "35mm"), aperture ("f/2.8"), shutter ("1/100"), focus_pulling
 - lighting, performance_direction, beats (comma-separated micro-beats)
-- action_design (stunts/choreo/vehicle dynamics), shot_list (key shots as a concise list)
-- environment_fx (rain, smoke, debris, reflections), color_grade (e.g., teal-orange high contrast)
-- speed_ramping (when to ramp speed/slow-mo), continuity_anchors (objects or lines that persist between shots)
-- visual_effects, negative_cues (avoid artifacts: extra limbs/flicker/etc.)
+- action_design, shot_list, environment_fx, color_grade
+- speed_ramping, continuity_anchors, visual_effects, negative_cues
 - voice_type, gesture, sound_design, postprocessing
 - duration (2–8), aspect_ratio ("16:9"|"9:16"|"1:1"|"21:9"), fps (24|25|30), motion_intensity ("low"|"medium"|"high")
 
 CREATIVE PROCESS
 - Read the user's idea and selected style: "{style}".
-- Infer genre and push cinematic specificity (for action: clear geography, momentum, cause-effect, stunt notes).
 - Keep "dialogue" in VIETNAMESE; everything else in ENGLISH.
 
 User Idea (Vietnamese): "{user_idea}"
 """.strip()
 
 # ==============================
-# SESSION STATE (đừng init uploaded_image để khỏi xung đột)
+# SESSION STATE
 # ==============================
 if "final_prompt" not in st.session_state: st.session_state.final_prompt = ""
 if "user_idea" not in st.session_state: st.session_state.user_idea = ""
@@ -180,49 +208,26 @@ if not google_api_key:
     st.stop()
 
 # ==============================
-# GEMINI: JSON-only + schema mở rộng
+# GEMINI: JSON-only + schema
 # ==============================
 RESPONSE_SCHEMA: Dict[str, Any] = {
     "type": "object",
-    "properties": {
-        "subject_description": {"type": "string"},
-        "core_action": {"type": "string"},
-        "setting_description": {"type": "string"},
-        "mood": {"type": "string"},
-        "dialogue": {"type": "string"},
-        "camera_motion": {"type": "string"},
-        "lens": {"type": "string"},
-        "aperture": {"type": "string"},
-        "shutter": {"type": "string"},
-        "focus_pulling": {"type": "string"},
-        "lighting": {"type": "string"},
-        "performance_direction": {"type": "string"},
-        "beats": {"type": "string"},
-        "action_design": {"type": "string"},
-        "shot_list": {"type": "string"},
-        "environment_fx": {"type": "string"},
-        "color_grade": {"type": "string"},
-        "speed_ramping": {"type": "string"},
-        "continuity_anchors": {"type": "string"},
-        "visual_effects": {"type": "string"},
-        "negative_cues": {"type": "string"},
-        "voice_type": {"type": "string"},
-        "gesture": {"type": "string"},
-        "sound_design": {"type": "string"},
-        "postprocessing": {"type": "string"},
-        "duration": {"type": "number"},
-        "aspect_ratio": {"type": "string"},
-        "fps": {"type": "number"},
-        "motion_intensity": {"type": "string"},
-    },
+    "properties": {k: {"type": "string"} for k in [
+        "subject_description","core_action","setting_description","mood","dialogue",
+        "camera_motion","lens","aperture","shutter","focus_pulling","lighting",
+        "performance_direction","beats","action_design","shot_list","environment_fx",
+        "color_grade","speed_ramping","continuity_anchors","visual_effects","negative_cues",
+        "voice_type","gesture","sound_design","postprocessing","aspect_ratio","motion_intensity"
+    ]}
 }
+RESPONSE_SCHEMA["properties"].update({"duration": {"type": "number"}, "fps": {"type": "number"}})
 
 try:
     genai.configure(api_key=google_api_key)
     gemini_model = genai.GenerativeModel(
         model_name="gemini-2.5-flash",
         generation_config={
-            "temperature": 0.7,           # giữ chất lượng ổn định hơn
+            "temperature": 0.7,  # giữ chất lượng ổn định
             "max_output_tokens": 2048,
             "response_mime_type": "application/json",
             "response_schema": RESPONSE_SCHEMA,
@@ -260,7 +265,7 @@ with col2:
     with st.expander("Tùy chọn nâng cao (kỹ thuật)", expanded=False):
         c1, c2, c3, c4 = st.columns(4)
         with c1:
-            duration = st.number_input("Thời lượng (s)", min_value=2, max_value=8, value=8, step=1)
+            duration = st.number_input("Thời lượng (s)", min_value=2, max_value=8, value=5, step=1)
         with c2:
             aspect_ratio = st.selectbox("Tỷ lệ khung", ["16:9", "9:16", "1:1", "21:9"], index=0)
         with c3:
@@ -292,7 +297,6 @@ with col2:
     with bcol1:
         submitted = st.button("Tạo kịch bản", key="btn_create", use_container_width=True)
     with bcol2:
-        # dùng callback để tránh StreamlitAPIException
         st.button("Làm mới", key="btn_reset", use_container_width=True, on_click=reset_form)
 
     # ==========================
@@ -325,6 +329,10 @@ with col2:
                             st.code(raw)
                         st.stop()
 
+                    # === Bổ sung: đảm bảo dialogue tiếng Việt & chuẩn hoá tên ===
+                    extracted["dialogue"] = ensure_dialogue(user_idea, extracted.get("dialogue", ""))
+                    extracted = canonicalize_names(extracted)
+
                     g = lambda k, d: extracted.get(k, d)
                     prompt_data = {
                         "subject_description": g("subject_description", "a subject"),
@@ -338,30 +346,32 @@ with col2:
                         "shutter": g("shutter", "1/100"),
                         "focus_pulling": g("focus_pulling", "rack focus on key beats"),
                         "lighting": g("lighting", "soft key light with warm rim; motivated practicals"),
-                        "performance_direction": g("performance_direction", "grounded intensity; clear eyelines"),
-                        "beats": g("beats", "establishing, escalation, close-quarters, payoff"),
-                        "action_design": g("action_design", "clean geography; believable physics; near-misses and swerves"),
-                        "shot_list": g("shot_list", "wide establishing; low-angle tracking; OTS; insert of throttle; hero close-up"),
-                        "environment_fx": g("environment_fx", "sparks, smoke wisps, wet asphalt reflections"),
-                        "color_grade": g("color_grade", "teal-orange with high contrast"),
-                        "speed_ramping": g("speed_ramping", "90–110% micro ramps; one 60% slow-mo hero beat"),
-                        "continuity_anchors": g("continuity_anchors", "neon billboard on left; cracked taxi windshield"),
-                        "visual_effects": g("visual_effects", "heat haze, light streaks"),
-                        "negative_cues": g("negative_cues", "flicker, extra limbs, deformed hands, melting textures"),
-                        "voice_type": g("voice_type", "gritty male voice"),
-                        "gesture": g("gesture", "firm grip, head tilt"),
-                        "sound_design": g("sound_design", "engine roar, tire squeal, Doppler police sirens, metal clanks, rising adrenaline music"),
-                        "postprocessing": g("postprocessing", "subtle film grain; gentle vignette"),
+                        "performance_direction": g("performance_direction", "warm smile; confident posture"),
+                        "beats": g("beats", "establishing, greet, response"),
+                        "action_design": g("action_design", "teacher walks to the front, turns to students"),
+                        "shot_list": g("shot_list", "MS entering; CU smile; WS classroom; MS speaking"),
+                        "environment_fx": g("environment_fx", "soft dust motes in window light"),
+                        "color_grade": g("color_grade", "natural warm tones"),
+                        "speed_ramping": g("speed_ramping", "none"),
+                        "continuity_anchors": g("continuity_anchors", "whiteboard behind teacher"),
+                        "visual_effects": g("visual_effects", "none"),
+                        "negative_cues": g("negative_cues", "flicker, artifacts, warped perspective"),
+                        "voice_type": g("voice_type", "calm male voice"),
+                        "gesture": g("gesture", "gentle nod"),
+                        "sound_design": g("sound_design", "classroom ambience; clear teacher voice"),
+                        "postprocessing": g("postprocessing", "subtle film grain"),
                         "duration": duration,
                         "aspect_ratio": aspect_ratio,
                         "fps": fps,
                         "motion_intensity": motion_intensity,
                     }
 
+                    # Style xuất ra tiếng Anh thuần
                     prompt_data["style"] = "In the style of the provided image" if uploaded_file else style_en
 
+                    # Audio line (giữ dialogue tiếng Việt)
                     if prompt_data["dialogue"]:
-                        prompt_data["audio_section"] = f'Generate natural Vietnamese speech, spoken by {prompt_data["voice_type"]}.'
+                        prompt_data["audio_section"] = f'Animate mouth to sync with: "{prompt_data["dialogue"]}". Generate natural Vietnamese speech, spoken by {prompt_data["voice_type"]}.'
                     else:
                         prompt_data["audio_section"] = "No speech; only ambience and foley."
 
@@ -376,16 +386,44 @@ with col2:
                         st.exception(e)
 
 # ==============================
-# OUTPUT
+# OUTPUT + COPY BUTTON
 # ==============================
 if st.session_state.final_prompt:
     st.divider()
     st.subheader("Kịch bản Prompt chi tiết")
+
     st.text_area(
         "Prompt (tiếng Anh) đã được tối ưu cho AI:",
         value=st.session_state.final_prompt,
-        height=430
+        height=420,
+        key="final_prompt_view"
     )
+
+    # Nút Sao chép prompt (giống “sao chép mã”)
+    copy_block = f"""
+    <div style="display:flex; justify-content:flex-end; margin-top:8px;">
+      <button id="copyBtn" style="
+        background:#f2f2f2; border:1px solid #d1d1d6; border-radius:10px;
+        padding:8px 14px; cursor:pointer;">
+        Sao chép prompt
+      </button>
+    </div>
+    <script>
+      const btn = document.getElementById('copyBtn');
+      btn.addEventListener('click', async () => {{
+        try {{
+          const txt = `{st.session_state.final_prompt.replace("`","\\`")}`;
+          await navigator.clipboard.writeText(txt);
+          btn.innerText = 'Đã sao chép ✓';
+          setTimeout(() => btn.innerText = 'Sao chép prompt', 1500);
+        }} catch (e) {{
+          btn.innerText = 'Không sao chép được';
+          setTimeout(() => btn.innerText = 'Sao chép prompt', 1500);
+        }}
+      }});
+    </script>
+    """
+    st.markdown(copy_block, unsafe_allow_html=True)
 
 # ==============================
 # FOOTER
