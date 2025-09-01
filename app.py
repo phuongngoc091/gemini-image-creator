@@ -16,7 +16,6 @@ APPLE_STYLE_CSS = """
   h1, h2, h3 { font-weight: 600; }
   .stApp > header { background-color: transparent; }
 
-  /* Buttons */
   .stButton > button {
       background-color: #007aff; color: white; border: none; border-radius: 12px;
       padding: 10px 24px; transition: all 0.2s ease-in-out; font-weight: 500;
@@ -24,7 +23,6 @@ APPLE_STYLE_CSS = """
   }
   .stButton > button:hover { background-color: #0056b3; color: white; }
 
-  /* Inputs */
   .stTextArea textarea, .stTextInput input {
       background-color: #ffffff; border: 1px solid #d1d1d6; border-radius: 12px; padding: 10px;
   }
@@ -32,7 +30,6 @@ APPLE_STYLE_CSS = """
       border-color: #007aff; box-shadow: 0 0 0 2px rgba(0,122,255,.2);
   }
 
-  /* Safe styling cho selectbox */
   .stSelectbox [data-baseweb="select"] {
       background-color: #ffffff; border: 1px solid #d1d1d6; border-radius: 12px;
   }
@@ -105,7 +102,12 @@ def has_multi_dialogue_intent(text: str) -> bool:
     return any(cue in t for cue in cues)
 
 def craft_dialogue(user_idea_vi: str) -> str:
+    # ưu tiên bắt lớp 9/2, 10A1, v.v.
     t = user_idea_vi.lower()
+    m = re.search(r"lớp\s+([0-9a-zA-Z/._-]+)", t)
+    if "chào" in t and m:
+        lop = m.group(1)
+        return f"Chào các em lớp {lop}, thầy rất vui gặp lại hôm nay!"
     if any(k in t for k in ["thầy","cô","giáo viên"]) and any(k in t for k in ["học sinh","lớp","lớp học"]):
         return random.choice([
             "Chào các em, hôm nay chúng ta bắt đầu bài học nhé!",
@@ -320,6 +322,16 @@ with col1:
 with col2:
     st.subheader("Ý tưởng của bạn")
 
+    # ----- NEW: bộ chọn thoại -----
+    speech_choice = st.radio(
+        "Thoại:",
+        options=["Không có thoại", "Có thoại"],
+        index=0,
+        horizontal=True,
+        help="Mặc định Không có thoại. Chọn 'Có thoại' để mình sinh/trao chuốt câu thoại phù hợp."
+    )
+    speech_enabled = (speech_choice == "Có thoại")
+
     with st.expander("Tùy chọn nâng cao (kỹ thuật)", expanded=False):
         c1, c2, c3, c4 = st.columns(4)
         with c1: duration = st.number_input("Thời lượng (s)", min_value=2, max_value=8, value=5, step=1)
@@ -380,14 +392,12 @@ with col2:
                     # Chuẩn hóa tên (trừ dialogue)
                     extracted = canonicalize_names(extracted)
 
-                    # --- Dialogue logic ---
-                    speech = has_speech_intent(user_idea)
-                    multi   = has_multi_dialogue_intent(user_idea)
-
+                    # --- Dialogue logic (tôn trọng lựa chọn người dùng) ---
                     dialogue_section = "No dialogue."
                     audio_section = "No speech; only ambience and foley."
 
-                    if speech:
+                    if speech_enabled:
+                        multi = has_multi_dialogue_intent(user_idea)
                         if multi:
                             lines = extracted.get("dialogue_lines") if isinstance(extracted.get("dialogue_lines"), list) else []
                             rendered, voices = [], []
