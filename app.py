@@ -112,24 +112,24 @@ Visual Effects: Create realistic effects like {visual_effects}.
 Audio: {audio_section}
 """
 
-# --- SIÊU PROMPT DÀNH CHO "BIÊN KỊCH AI" (PHIÊN BẢN 2.0 - ĐẠO DIỄN ĐIỆN ẢNH) ---
+# --- SIÊU PROMPT DÀNH CHO "BIÊN KỊCH AI" (PHIÊN BẢN 2.1 - SIÊU CHẶT CHẼ) ---
 META_PROMPT_FOR_GEMINI = """
-You are a visionary film director and a master scriptwriter. Your task is to take a user's simple idea (in Vietnamese) and expand it into a rich, evocative, and technically detailed cinematic prompt for an advanced text-to-video AI model.
+You are a creative director AI. Your primary task is to convert a simple user idea (in Vietnamese) into a detailed cinematic prompt for a video AI model.
 
-**Your creative process:**
-1.  **Deconstruct & Envision:** Read the user's idea. Immediately start visualizing it as a movie scene. What is the core emotion? What is the unspoken story?
-2.  **Translate the Core:** Translate the fundamental elements (subject, action, setting, dialogue) into English.
-3.  **Creative Expansion (Most Important):** Do not just translate, ELEVATE. Based on the chosen `{style}` and the core idea, creatively add details that the user didn't explicitly state.
-    -   **For "subject_description"**: Describe their appearance, clothing, and subtle expressions.
-    -   **For "setting_description"**: Describe the time of day, the weather, specific details in the environment. Make it a living world.
-    -   **For "mood" and "visual_effects"**: Don't just state them. Describe *how* they are achieved. For example, instead of just "sad", describe "a melancholic mood created by soft rain streaking down a windowpane, with cool, blue-toned lighting."
-    -   **For "core_action" and "gesture"**: Describe the actions with cinematic verbs.
-4.  **Dialogue Processing:** If dialogue exists, rewrite it in Vietnamese to be authentic and concise (under 8s). If not, leave the dialogue field empty.
-5.  **Final Output:** Structure everything into a clean JSON object with the following fields: "subject_description", "core_action", "setting_description", "dialogue", "mood", "visual_effects", "voice_type", "gesture".
+**CRITICAL OUTPUT REQUIREMENTS:**
+1.  **LANGUAGE:** All JSON values MUST be in ENGLISH, with only ONE exception.
+2.  **EXCEPTION FOR DIALOGUE:** The value for the "dialogue" field MUST remain in its original VIETNAMESE.
+3.  **FORMAT:** The entire final output MUST be a single, clean JSON object. Do not add any explanatory text before or after the JSON block.
 
-**Style Directive:** The user has chosen the style: "{style}". All your creative decisions must serve and enhance this style.
+**CREATIVE PROCESS:**
+1.  **Analyze Idea:** Read the user's idea and the chosen `{style}`.
+2.  **Envision Scene:** Visualize the idea as a movie scene. Add creative details for subject appearance, setting, mood, lighting, and camera work to elevate the concept.
+3.  **Rewrite Dialogue:** If the user provides dialogue, rewrite it in VIETNAMESE to be natural and concise (under 8 seconds). If not, the "dialogue" field should be an empty string.
+4.  **Translate & Build JSON:** Translate all descriptive elements into fluent English. Then, construct the JSON object with the following fields: "subject_description", "core_action", "setting_description", "dialogue", "mood", "visual_effects", "voice_type", "gesture".
 
-**Analyze the following user's idea and produce a masterpiece-level JSON output.**
+**STYLE DIRECTIVE:** The user has selected the style: "{style}". All creative descriptions must reflect this choice.
+
+**Analyze the user's idea below and generate the JSON output, strictly following all critical requirements.**
 
 User Idea: "{user_idea}"
 """
@@ -162,7 +162,8 @@ with col1:
     st.subheader("Ý tưởng hình sang video")
     uploaded_file = st.file_uploader("Tải ảnh lên (tùy chọn)", type=["png", "jpg", "jpeg"])
     if uploaded_file:
-        st.image(Image.open(uploaded_file), caption="Khung hình khởi đầu", use_column_width=True)
+        # --- ĐÃ SỬA LỖI CẢNH BÁO TẠI ĐÂY ---
+        st.image(Image.open(uploaded_file), caption="Khung hình khởi đầu", use_container_width=True)
 
     st.image(
         "https://ia600905.us.archive.org/0/items/Donate_png/1111111.jpg",
@@ -219,8 +220,6 @@ with col2:
                     st.error("Lỗi: AI không trả về nội dung. Yêu cầu của bạn có thể đã bị chặn. Vui lòng thử lại với một ý tưởng khác.")
                     st.stop()
 
-                # --- LOGIC MỚI ĐỂ TRÍCH XUẤT JSON AN TOÀN HƠN ---
-                # Tìm vị trí bắt đầu và kết thúc của khối JSON
                 start_index = response.text.find('{')
                 end_index = response.text.rfind('}') + 1
                 
@@ -228,11 +227,9 @@ with col2:
                     response_text = response.text[start_index:end_index]
                     extracted_data = json.loads(response_text)
                 else:
-                    # Nếu không tìm thấy JSON, báo lỗi
                     st.error("Lỗi: Không tìm thấy dữ liệu JSON hợp lệ trong phản hồi của AI.")
                     st.write("Dữ liệu thô từ AI (để gỡ lỗi):", response.text)
                     st.stop()
-
 
                 prompt_data = {
                     'style': final_style,
