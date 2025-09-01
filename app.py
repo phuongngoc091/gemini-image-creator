@@ -39,6 +39,9 @@ st.markdown(APPLE_STYLE_CSS, unsafe_allow_html=True)
 # --- KHỞI TẠO SESSION STATE ---
 if 'final_prompt' not in st.session_state:
     st.session_state.final_prompt = ""
+# Biến để lưu trữ giá trị của ô text_area
+if 'user_idea' not in st.session_state:
+    st.session_state.user_idea = ""
 
 # --- TIÊU ĐỀ ---
 st.title("Viết prompt tạo video với phuongngoc091")
@@ -128,18 +131,20 @@ with col2:
     if is_style_disabled:
         st.info("ℹ️ Phong cách sẽ được tự động phân tích từ hình ảnh bạn đã tải lên.")
 
+    # Sử dụng st.session_state.user_idea để duy trì giá trị
     user_idea = st.text_area(
         "Nhập ý tưởng video bằng tiếng Việt:", height=210,
         placeholder="Ví dụ: Thầy giáo bước lên bục giảng, mỉm cười nói: 'Xin chào các em'",
-        key="user_idea_input"
+        key="user_idea"
     )
     
     form_col1, form_col2 = st.columns([1, 1])
     with form_col1:
         submitted = st.button("Tạo kịch bản", use_container_width=True)
     with form_col2:
+        # Sửa lỗi: Gán lại st.session_state.user_idea, không phải user_idea_input
         if st.button("Làm mới", use_container_width=True):
-            st.session_state.user_idea_input = ""
+            st.session_state.user_idea = ""
             st.session_state.final_prompt = ""
             st.rerun()
 
@@ -194,7 +199,6 @@ with col2:
                 template = IMAGE_TO_VIDEO_TEMPLATE if uploaded_file else TEXT_TO_VIDEO_TEMPLATE
                 st.session_state.final_prompt = template.format(**prompt_data)
                 
-                # Sửa lỗi: Gọi st.rerun() để cập nhật giao diện sau khi có kết quả
                 st.rerun()
 
             except Exception as e:
