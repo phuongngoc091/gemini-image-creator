@@ -40,32 +40,37 @@ Visual Effects: The atmosphere is {mood}. Create realistic environmental effects
 Audio: {audio_section}
 """
 
-# --- SIÊU PROMPT DÀNH CHO "BIÊN KỊCH AI" ---
-# Đây là chỉ dẫn chúng ta gửi cho Gemini để phân tích ý tưởng của người dùng
+# --- SIÊU PROMPT DÀNH CHO "BIÊN KỊCH AI" (PHIÊN BẢN NÂNG CẤP) ---
 META_PROMPT_FOR_GEMINI = """
-Analyze the following user's video idea, which is in Vietnamese. Your task is to act as a creative director and scriptwriter.
-Extract key information, translate it into English, and format the output as a single, clean JSON object.
+You are an expert creative director and scriptwriter for a cutting-edge text-to-video AI model. Your task is to transform a user's simple idea (in Vietnamese) into a rich, detailed, and technically precise cinematic prompt in English.
 
-RULES:
-1.  Translate all extracted values to English, EXCEPT for the 'dialogue' field.
-2.  The 'dialogue' field must be processed:
-    - If the user provides dialogue, rewrite it to be more natural, engaging, and concise enough to be spoken clearly in under 8 seconds. KEEP IT IN VIETNAMESE.
-    - If the user does not provide any dialogue, the value for 'dialogue' must be an empty string "".
-3.  Provide reasonable, creative default values in English for any fields that are not mentioned in the user's idea.
+**Analyze the user's idea by following these steps:**
+1.  **Deconstruct the core elements:** Identify the main subject, the core action, and the setting from the user's idea.
+2.  **Envision the scene:** Based on the core elements, creatively imagine the mood, lighting, and cinematic style. Think like a director. What would make this scene powerful?
+3.  **Process the dialogue:**
+    - If dialogue exists, rewrite it to be impactful and concise (under 8 seconds). Keep it in the original Vietnamese.
+    - If no dialogue exists, leave the dialogue field empty.
+4.  **Translate and Structure:** Translate all descriptive elements into fluent, evocative English. Keep the dialogue in Vietnamese. Structure the final output as a single, clean JSON object.
+
+**Here is an example of the quality I expect:**
+-   **User's simple idea (Vietnamese):** "cô gái đi trên Cầu Vàng có tuyết rơi và nói 'Chào mọi người! Tuyết rơi đẹp không?'"
+-   **Your high-quality JSON output:**
+    {
+        "subject_description": "a young Vietnamese woman with a graceful walk, wearing a warm, elegant coat",
+        "core_action": "walking forward along the iconic Golden Bridge in Da Nang, moving directly towards the camera",
+        "setting_description": "the Golden Bridge in Da Nang, Vietnam, uniquely covered in a gentle, magical snowfall",
+        "dialogue": "Chào mọi người! Tuyết rơi ở Cầu Vàng, đẹp siêu thực luôn!",
+        "tone": "friendly and slightly amazed",
+        "language": "Vietnamese",
+        "voice_type": "a warm, gentle female voice",
+        "gesture": "raising a hand to catch a falling snowflake, with a sense of wonder",
+        "visual_effects": "realistic falling snow, soft and ambient light reflecting off the golden structure",
+        "mood": "magical, serene, and wondrous"
+    }
+
+**Now, analyze the following user's idea and generate the JSON output based on the same high standard.**
 
 User's Idea: "{user_idea}"
-
-JSON fields to extract:
--   "subject_description": (Translate to English) A brief description of the main character or subject.
--   "core_action": (Translate to English) The primary action the subject is performing.
--   "setting_description": (Translate to English) The location where the action takes place.
--   "dialogue": (Keep in Vietnamese and rewrite for clarity and brevity < 8s) The spoken words.
--   "tone": (Translate to English) The emotional tone of the speech (e.g., 'friendly', 'dramatic', 'joyful').
--   "language": (Keep 'Vietnamese' if dialogue exists, otherwise 'None') The language of the dialogue.
--   "voice_type": (Translate to English) The type of voice speaking (e.g., 'a young female voice', 'a deep male voice').
--   "gesture": (Translate to English) A simple, natural gesture the subject could make that fits the action and dialogue.
--   "visual_effects": (Translate to English) Any relevant visual effects (e.g., 'falling snow', 'sunlight filtering through leaves').
--   "mood": (Translate to English) The overall atmosphere of the scene (e.g., 'patriotic', 'serene', 'mysterious').
 """
 
 # --- Cấu hình API Key ở thanh bên (sidebar) ---
