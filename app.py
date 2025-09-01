@@ -2,7 +2,8 @@
 import streamlit as st
 import google.generativeai as genai
 from PIL import Image
-import json
+import json, re
+from typing import Any, Dict
 
 # ==============================
 # CẤU HÌNH TRANG & CSS
@@ -32,7 +33,7 @@ APPLE_STYLE_CSS = """
       border-color: #007aff; box-shadow: 0 0 0 2px rgba(0,122,255,.2);
   }
 
-  /* ✅ Safe styling cho selectbox (không động > div) */
+  /* Safe styling cho selectbox */
   .stSelectbox [data-baseweb="select"] {
       background-color: #ffffff; border: 1px solid #d1d1d6; border-radius: 12px;
   }
@@ -90,6 +91,7 @@ Audio: {audio_section}
 Technical: duration {duration}s | aspect ratio {aspect_ratio} | fps {fps} | motion intensity {motion_intensity}
 """.strip()
 
+# Meta-prompt (vẫn yêu cầu JSON-only)
 META_PROMPT_FOR_GEMINI = """
 You are a film director AI. Convert a short Vietnamese idea into a production-ready JSON for a video generation model.
 
@@ -116,7 +118,7 @@ User Idea (Vietnamese): "{user_idea}"
 """.strip()
 
 # ==============================
-# SESSION STATE (KHÔNG init uploaded_image để tránh xung đột)
+# SESSION STATE
 # ==============================
 if "final_prompt" not in st.session_state:
     st.session_state.final_prompt = ""
@@ -126,8 +128,8 @@ if "style" not in st.session_state:
     st.session_state.style = DEFAULT_STYLE
 
 def reset_form():
-    """Xoá toàn bộ dữ liệu form. Callback tự rerun, không gọi st.rerun() ở đây."""
-    st.session_state.pop("uploaded_image", None)  # quan trọng: xoá key file_uploader, không gán None
+    """Xoá toàn bộ dữ liệu form. Callback tự rerun, KHÔNG gọi st.rerun()."""
+    st.session_state.pop("uploaded_image", None)  # xoá key file_uploader
     st.session_state["user_idea"] = ""
     st.session_state["final_prompt"] = ""
     st.session_state["style"] = DEFAULT_STYLE
@@ -148,12 +150,83 @@ if not google_api_key:
     st.error("Vui lòng nhập API Key để bắt đầu.")
     st.stop()
 
-# Khởi tạo model
+# ==============================
+# GEMINI: ép JSON-only + schema lỏng
+# ==============================
+RESPONSE_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "subject_description": {"type": "string"},
+        "core_action": {"type": "string"},
+        "setting_description": {"type": "string"},
+        "mood": {"type": "string"},
+        "dialogue": {"type": "string"},
+        "camera_motion": {"type": "string"},
+        "lens": {"type": "string"},
+        "aperture": {"type": "string"},
+        "shutter": {"type": "string"},
+        "lighting": {"type": "string"},
+        "performance_direction": {"type": "string"},
+        "beats": {"type": "string"},
+        "visual_effects": {"type": "string"},
+        "negative_cues": {"type": "string"},
+        "voice_type": {"type": "string"},
+        "gesture": {"type": "string"},
+        "sound_design": {"type": "string"},
+        "duration": {"type": "number"},
+        "aspect_ratio": {"type": "string"},
+        "fps": {"type": "number"},
+        "motion_intensity": {"type": "string"},
+    },
+    # không bắt buộc 'required' để tránh fail cứng
+}
+
+def safe_json_loads(raw: str) -> Dict[str, Any]:
+    """Cố gắng parse JSON từ mọi tình huống: code-fence, text kèm, smart quotes, dấu phẩy thừa."""
+    candidates = []
+    t = raw.strip()
+    candidates.append(t)
+
+    # 1) ```json ... ```
+    m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", t, flags=re.DOTALL | re.IGNORECASE)
+    if m:
+        candidates.append(m.group(1))
+
+    # 2) Cắt theo dấu ngoặc lớn nhất
+    start, end = t.find("{"), t.rfind("}")
+    if start != -1 and end > start:
+        candidates.append(t[start:end + 1])
+
+    def clean(s: str) -> str:
+        s = s.replace("\u200b", "")  # zero-width
+        s = s.translate({
+            ord("“"): '"', ord("”"): '"',
+            ord("‘"): "'", ord("’"): "'",
+        })
+        # bỏ dấu phẩy cuối trước } hoặc ]
+        s = re.sub(r",\s*([}\]])", r"\1", s)
+        return s.strip()
+
+    for c in candidates:
+        try:
+            return json.loads(clean(c))
+        except Exception:
+            continue
+    raise ValueError("Could not parse JSON from model response")
+
+# Khởi tạo model (ép JSON-only)
 try:
     genai.configure(api_key=google_api_key)
     gemini_model = genai.GenerativeModel(
         model_name="gemini-2.5-flash",
-        generation_config={"temperature": 0.8, "max_output_tokens": 2048},
+        generation_config={
+            "temperature": 0.8,
+            "max_output_tokens": 2048,
+            # ép model trả về JSON thuần
+            "response_mime_type": "application/json",
+            # gợi ý schema (không bắt buộc):
+            "response_schema": RESPONSE_SCHEMA,
+        },
     )
 except Exception as e:
     st.error(f"Lỗi cấu hình API Key: {e}")
@@ -172,7 +245,7 @@ with col1:
     uploaded_file = st.file_uploader(
         "Tải ảnh lên (tùy chọn)",
         type=["png", "jpg", "jpeg"],
-        key="uploaded_image"   # có key để reset bằng pop()
+        key="uploaded_image"
     )
     if uploaded_file:
         try:
@@ -184,11 +257,10 @@ with col1:
 with col2:
     st.subheader("Ý tưởng của bạn")
 
-    # Tùy chọn kỹ thuật
     with st.expander("Tùy chọn nâng cao (kỹ thuật)", expanded=False):
         c1, c2, c3, c4 = st.columns(4)
         with c1:
-            duration = st.number_input("Thời lượng (s)", min_value=2, max_value=8, value=5, step=1)
+            duration = st.number_input("Thời lượng (s)", min_value=2, max_value=8, value=8, step=1)
         with c2:
             aspect_ratio = st.selectbox("Tỷ lệ khung", ["16:9", "9:16", "1:1", "21:9"], index=0)
         with c3:
@@ -241,21 +313,18 @@ with col2:
                     )
                     response = gemini_model.generate_content(request_for_gemini)
 
-                    if not getattr(response, "text", None) or not response.text.strip():
-                        st.error("Lỗi: AI không trả về nội dung. Yêu cầu của bạn có thể đã bị chặn.")
+                    raw = (response.text or "").strip()
+                    if not raw:
+                        st.error("Lỗi: AI không trả về nội dung. Có thể yêu cầu bị chặn.")
                         st.stop()
 
-                    raw_text = response.text.strip()
-                    start_index = raw_text.find("{")
-                    end_index = raw_text.rfind("}") + 1
-                    if start_index == -1 or end_index <= start_index:
+                    try:
+                        extracted_data = safe_json_loads(raw)
+                    except Exception:
                         st.error("Lỗi: Không tìm thấy JSON hợp lệ trong phản hồi của AI.")
                         with st.expander("Xem dữ liệu thô từ AI"):
-                            st.code(raw_text)
+                            st.code(raw)
                         st.stop()
-
-                    response_text = raw_text[start_index:end_index]
-                    extracted_data = json.loads(response_text)
 
                     def _get(k, default): return extracted_data.get(k, default)
 
@@ -289,10 +358,7 @@ with col2:
                     else:
                         prompt_data["audio_section"] = "No speech; only ambience and foley."
 
-                    prompt_data["sound_design"] = _get(
-                        "sound_design",
-                        "subtle room tone, soft footsteps, light music bed"
-                    )
+                    prompt_data["sound_design"] = _get("sound_design", "subtle room tone, soft footsteps, light music bed")
 
                     template = IMAGE_TO_VIDEO_TEMPLATE if uploaded_file else TEXT_TO_VIDEO_TEMPLATE
                     st.session_state.final_prompt = template.format(**prompt_data)
@@ -300,14 +366,8 @@ with col2:
                     # ngoài callback -> rerun để hiển thị kết quả ngay
                     st.rerun()
 
-                except json.JSONDecodeError as je:
-                    st.error("Lỗi phân tích JSON từ AI. Vui lòng thử lại hoặc điều chỉnh ý tưởng.")
-                    with st.expander("Chi tiết lỗi JSON"):
-                        st.exception(je)
-                        st.write("Phản hồi (đã cắt theo dấu ngoặc):")
-                        st.code(response_text if 'response_text' in locals() else "", language="json")
                 except Exception as e:
-                    st.error("Đã xảy ra lỗi không mong muốn khi tạo kịch bản. Vui lòng thử lại.")
+                    st.error("Đã xảy ra lỗi khi tạo kịch bản. Vui lòng thử lại.")
                     with st.expander("Chi tiết kỹ thuật"):
                         st.exception(e)
 
