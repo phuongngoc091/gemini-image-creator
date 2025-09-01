@@ -156,6 +156,12 @@ with col1:
     if uploaded_file:
         st.image(Image.open(uploaded_file), caption="Khung hình khởi đầu", use_column_width=True)
 
+    # --- THÊM HÌNH ẢNH MỚI TẠI ĐÂY ---
+    st.image(
+        "https://ia600905.us.archive.org/0/items/Donate_png/1111111.jpg",
+        caption="Donate"
+    )
+
 with col2:
     st.subheader("Ý tưởng của bạn")
     
