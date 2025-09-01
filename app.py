@@ -159,7 +159,7 @@ with col1:
     # --- THÊM HÌNH ẢNH MỚI TẠI ĐÂY ---
     st.image(
         "https://ia600905.us.archive.org/0/items/Donate_png/1111111.jpg",
-        caption="Ủng hộ tác giả",
+        caption="Donate",
         width=250 # Điều chỉnh chiều rộng tại đây
     )
 
