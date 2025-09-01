@@ -30,6 +30,7 @@ APPLE_STYLE_CSS = """
       border-color: #007aff; box-shadow: 0 0 0 2px rgba(0,122,255,.2);
   }
 
+  /* Safe styling cho selectbox */
   .stSelectbox [data-baseweb="select"] {
       background-color: #ffffff; border: 1px solid #d1d1d6; border-radius: 12px;
   }
@@ -84,25 +85,16 @@ def canonicalize_names(data: Dict[str, Any]) -> Dict[str, Any]:
             data[k] = strip_diacritics(data[k])
     return data
 
-def has_speech_intent(text: str) -> bool:
-    t = (text or "").lower()
-    cues = [
-        "lời thoại","thoại","nói","chào","hỏi","trả lời","đối thoại","thuyết minh",
-        "voice","voiceover","voice over","nói chuyện","gọi","hét","la","phỏng vấn",
-        "trò chuyện","đối đáp","đàm thoại","conversation","interview","debate"
-    ]
-    return any(cue in t for cue in cues)
-
 def has_multi_dialogue_intent(text: str) -> bool:
     t = (text or "").lower()
     cues = [
         "đối thoại","nói chuyện với nhau","trò chuyện","hỏi đáp","đối đáp",
-        "phỏng vấn","phỏng vấn nhau","conversation","interview","debate","hội thoại","trao đổi"
+        "phỏng vấn","conversation","interview","debate","hội thoại","trao đổi"
     ]
     return any(cue in t for cue in cues)
 
 def craft_dialogue(user_idea_vi: str) -> str:
-    # ưu tiên bắt lớp 9/2, 10A1, v.v.
+    """Fallback khi AI không trả dialogue."""
     t = user_idea_vi.lower()
     m = re.search(r"lớp\s+([0-9a-zA-Z/._-]+)", t)
     if "chào" in t and m:
@@ -134,7 +126,7 @@ def safe_json_loads(raw: str) -> Dict[str, Any]:
     return json.loads(t)
 
 # ==============================
-# PROMPT TEMPLATES
+# PROMPT TEMPLATES (đã chèn Dialogue)
 # ==============================
 IMAGE_TO_VIDEO_TEMPLATE = """
 Style: {style}
@@ -150,6 +142,10 @@ VFX: Maintain the original atmosphere. Animate effects like {visual_effects}. Av
 Speed & Ramps: {speed_ramping}
 Continuity: {continuity_anchors}
 Sound Design: {sound_design}
+
+Dialogue:
+{dialogue_section}
+
 Audio: {audio_section}
 Post: {postprocessing}
 Technical: duration {duration}s | aspect ratio {aspect_ratio} | fps {fps} | motion intensity {motion_intensity}
@@ -169,6 +165,10 @@ VFX: Create realistic effects like {visual_effects}. Avoid: {negative_cues}
 Speed & Ramps: {speed_ramping}
 Continuity: {continuity_anchors}
 Sound Design: {sound_design}
+
+Dialogue:
+{dialogue_section}
+
 Audio: {audio_section}
 Post: {postprocessing}
 Technical: duration {duration}s | aspect ratio {aspect_ratio} | fps {fps} | motion intensity {motion_intensity}
@@ -317,18 +317,18 @@ with col1:
             st.image(Image.open(uploaded_file), caption="Khung hình khởi đầu", use_container_width=True)
         except Exception:
             st.warning("Không hiển thị được ảnh vừa tải. Vui lòng thử ảnh khác.")
-    st.image("https://ia600905.us.archive.org/0/items/Donate_png/1111111.jpg", caption="Donate", width=250)
+    st.image("https://ia601003.us.archive.org/33/items/donate_202509/DONATE.jpg", caption="Donate to support me!")
 
 with col2:
     st.subheader("Ý tưởng của bạn")
 
-    # ----- NEW: bộ chọn thoại -----
+    # Bộ chọn thoại (mặc định Không)
     speech_choice = st.radio(
         "Thoại:",
         options=["Không có thoại", "Có thoại"],
         index=0,
         horizontal=True,
-        help="Mặc định Không có thoại. Chọn 'Có thoại' để mình sinh/trao chuốt câu thoại phù hợp."
+        help="Mặc định không sinh thoại. Chọn 'Có thoại' để AI tạo thoại (có fallback nếu AI không trả)."
     )
     speech_enabled = (speech_choice == "Có thoại")
 
@@ -392,33 +392,41 @@ with col2:
                     # Chuẩn hóa tên (trừ dialogue)
                     extracted = canonicalize_names(extracted)
 
-                    # --- Dialogue logic (tôn trọng lựa chọn người dùng) ---
+                    # --- Dialogue logic (AI trước, fallback sau; tôn trọng chọn Không/Có) ---
                     dialogue_section = "No dialogue."
                     audio_section = "No speech; only ambience and foley."
 
                     if speech_enabled:
                         multi = has_multi_dialogue_intent(user_idea)
+
                         if multi:
+                            # ƯU TIÊN: mảng nhiều nhân vật từ AI
                             lines = extracted.get("dialogue_lines") if isinstance(extracted.get("dialogue_lines"), list) else []
                             rendered, voices = [], []
                             for item in lines:
                                 spk = normalize_speaker(item.get("speaker","Speaker"))
                                 line_vi = (item.get("line_vi") or "").strip()
-                                if not line_vi: continue
-                                tone = item.get("voice_tone","").strip()
+                                if not line_vi: 
+                                    continue
+                                tone = (item.get("voice_tone") or "").strip()
                                 rendered.append(f'{spk}: "{line_vi}"')
                                 voices.append(f"{spk}: {tone or 'natural'}")
                             if rendered:
                                 dialogue_section = "Use the following lines exactly (Vietnamese):\n" + "\n".join(rendered)
                                 audio_section = "Generate separate Vietnamese voices with these tones: " + "; ".join(voices) + "."
                             else:
-                                # fallback đơn thoại
-                                single = (extracted.get("dialogue") or "").strip() or craft_dialogue(user_idea)
+                                # Không có lines → thử 1 câu AI; nếu trống → fallback rule
+                                single = (extracted.get("dialogue") or "").strip()
+                                if not single:
+                                    single = craft_dialogue(user_idea)
                                 dialogue_section = f'Animate mouth to sync with: "{single}".'
                                 voice = extracted.get("voice_type", "a natural voice")
                                 audio_section = f"Generate natural Vietnamese speech, spoken by {voice}."
                         else:
-                            single = (extracted.get("dialogue") or "").strip() or craft_dialogue(user_idea)
+                            # Không phải hội thoại → ưu tiên 1 câu AI; nếu trống → fallback
+                            single = (extracted.get("dialogue") or "").strip()
+                            if not single:
+                                single = craft_dialogue(user_idea)
                             dialogue_section = f'Animate mouth to sync with: "{single}".'
                             voice = extracted.get("voice_type", "a natural voice")
                             audio_section = f"Generate natural Vietnamese speech, spoken by {voice}."
