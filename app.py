@@ -49,29 +49,17 @@ APPLE_STYLE_CSS = """
         background-color: #d1d1d6;
     }
 
-    /* Ô nhập liệu */
-    .stTextArea textarea, .stTextInput input, .stSelectbox > div > div {
+    /* Ô nhập liệu và Selectbox */
+    .stTextArea textarea, .stTextInput input, .stSelectbox div[data-baseweb="select"] > div {
         background-color: #ffffff;
         border: 1px solid #d1d1d6;
-        border-radius: 12px;
+        border-radius: 12px; /* Áp dụng bo tròn cho tất cả */
         padding: 10px;
     }
-    .stTextArea textarea:focus, .stTextInput input:focus, .stSelectbox > div > div:focus-within {
+    .stTextArea textarea:focus, .stTextInput input:focus, .stSelectbox div[data-baseweb="select"] > div:focus-within {
          border-color: #007aff;
          box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.2);
     }
-    
-    /* Chỉnh sửa riêng cho Selectbox để sửa lỗi hiển thị */
-    .stSelectbox div[data-baseweb="select"] > div {
-        background-color: #ffffff;
-        border: 1px solid #d1d1d6;
-        border-radius: 12px;
-    }
-    .stSelectbox div[data-baseweb="select"] > div:focus-within {
-        border-color: #007aff;
-        box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.2);
-    }
-
 
     /* Box tải file lên */
     .stFileUploader {
@@ -137,7 +125,7 @@ You are a visionary film director and a master scriptwriter. Your task is to tak
     -   **For "mood" and "visual_effects"**: Don't just state them. Describe *how* they are achieved. For example, instead of just "sad", describe "a melancholic mood created by soft rain streaking down a windowpane, with cool, blue-toned lighting."
     -   **For "core_action" and "gesture"**: Describe the actions with cinematic verbs.
 4.  **Dialogue Processing:** If dialogue exists, rewrite it in Vietnamese to be authentic and concise (under 8s). If not, leave the dialogue field empty.
-5.  **Final Output:** Structure everything into a clean JSON object with the following fields: "subject_description", "core_action", "setting_description", "dialogue", "mood", "visual_effects", "voice_type".
+5.  **Final Output:** Structure everything into a clean JSON object with the following fields: "subject_description", "core_action", "setting_description", "dialogue", "mood", "visual_effects", "voice_type", "gesture".
 
 **Style Directive:** The user has chosen the style: "{style}". All your creative decisions must serve and enhance this style.
 
@@ -174,7 +162,7 @@ with col1:
     st.subheader("Ý tưởng hình sang video")
     uploaded_file = st.file_uploader("Tải ảnh lên (tùy chọn)", type=["png", "jpg", "jpeg"])
     if uploaded_file:
-        st.image(Image.open(uploaded_file), caption="Khung hình khởi đầu", use_column_width=True)
+        st.image(Image.open(uploaded_file), caption="Khung hình khởi đầu", use_container_width=True)
 
     st.image(
         "https://ia600905.us.archive.org/0/items/Donate_png/1111111.jpg",
@@ -243,7 +231,7 @@ with col2:
                     'mood': extracted_data.get('mood', 'neutral'),
                     'visual_effects': extracted_data.get('visual_effects', 'none'),
                     'voice_type': extracted_data.get('voice_type', 'a voice'),
-                    'gesture': extracted_data.get('gesture', 'a natural gesture') # Thêm gesture vào đây
+                    'gesture': extracted_data.get('gesture', 'a natural gesture')
                 }
 
                 if prompt_data['dialogue']:
