@@ -166,7 +166,7 @@ with col1:
 
     st.image(
         "https://ia600905.us.archive.org/0/items/Donate_png/1111111.jpg",
-        caption="Donate",
+        caption="Donate to support me",
         width=250
     )
 
