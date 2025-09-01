@@ -50,13 +50,13 @@ APPLE_STYLE_CSS = """
     }
 
     /* Ô nhập liệu */
-    .stTextArea textarea, .stTextInput input {
+    .stTextArea textarea, .stTextInput input, .stSelectbox > div > div {
         background-color: #ffffff;
         border: 1px solid #d1d1d6;
         border-radius: 12px;
         padding: 10px;
     }
-    .stTextArea textarea:focus, .stTextInput input:focus {
+    .stTextArea textarea:focus, .stTextInput input:focus, .stSelectbox > div > div:focus-within {
          border-color: #007aff;
          box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.2);
     }
@@ -94,8 +94,9 @@ st.markdown(APPLE_STYLE_CSS, unsafe_allow_html=True)
 st.title("Viết prompt tạo video với phuongngoc091")
 st.caption("Biến ý tưởng đơn giản của bạn thành một kịch bản video chi tiết.")
 
-# --- CÁC KHUÔN MẪU PROMPT (KHÔNG THAY ĐỔI) ---
+# --- CÁC KHUÔN MẪU PROMPT (ĐÃ CẬP NHẬT) ---
 IMAGE_TO_VIDEO_TEMPLATE = """
+Style: {style}
 Initial Frame: Use the provided image of {subject_description}.
 Animation: Animate the subject to {core_action}.
 Speech: {dialogue_section}
@@ -103,6 +104,7 @@ Visual Effects: Maintain the original atmosphere. Animate effects like {visual_e
 Audio: {audio_section}
 """
 TEXT_TO_VIDEO_TEMPLATE = """
+Style: {style}
 Scene Description: A cinematic, 8k, photorealistic shot of {subject_description} in {setting_description}. The mood is {mood}.
 Animation: Animate the subject to {core_action}.
 Speech: {dialogue_section}
@@ -111,18 +113,19 @@ Audio: {audio_section}
 """
 META_PROMPT_FOR_GEMINI = """
 Analyze the user's Vietnamese video idea. Extract key information and translate it to English.
+The user has also chosen a specific visual style: "{style}". You must incorporate this style into your descriptions.
 Rewrite the dialogue in Vietnamese to be concise (under 8 seconds).
 Output a clean JSON object.
 
 User Idea: "{user_idea}"
 
 JSON fields:
-- "subject_description": (Translate to English) The main subject.
+- "subject_description": (Translate to English) The main subject, described in the chosen style.
 - "core_action": (Translate to English) The main action.
-- "setting_description": (Translate to English) The location.
+- "setting_description": (Translate to English) The location, described in the chosen style.
 - "dialogue": (Keep and rewrite in Vietnamese) The speech.
-- "mood": (Translate to English) The feeling of the scene.
-- "visual_effects": (Translate to English) Visual effects.
+- "mood": (Translate to English) The feeling of the scene, consistent with the chosen style.
+- "visual_effects": (Translate to English) Visual effects that enhance the chosen style.
 - "voice_type": (Translate to English) e.g., 'a warm female voice'.
 """
 
@@ -156,15 +159,18 @@ with col1:
     if uploaded_file:
         st.image(Image.open(uploaded_file), caption="Khung hình khởi đầu", use_column_width=True)
 
-    # --- THÊM HÌNH ẢNH MỚI TẠI ĐÂY ---
     st.image(
         "https://ia600905.us.archive.org/0/items/Donate_png/1111111.jpg",
         caption="Donate",
-        width=250 # Điều chỉnh chiều rộng tại đây
+        width=250
     )
 
 with col2:
     st.subheader("Ý tưởng của bạn")
+    
+    # --- THÊM CHỨC NĂNG CHỌN STYLE ---
+    style_options = ["Chân thực (Photorealistic)", "Hoạt hình 3D Pixar (3D Pixar Animation)", "Anime Nhật Bản (Japanese Anime)", "Tranh màu nước (Watercolor Painting)", "Phim tài liệu (Documentary)", "Phim cũ (Vintage Film)"]
+    selected_style = st.selectbox("Chọn phong cách video:", style_options)
     
     user_idea = st.text_area(
         "Nhập ý tưởng video bằng tiếng Việt:",
@@ -173,7 +179,6 @@ with col2:
         key="user_idea_input"
     )
     
-    # Các nút bấm
     form_col1, form_col2 = st.columns([1, 1])
     with form_col1:
         submitted = st.button("Tạo kịch bản", use_container_width=True)
@@ -186,7 +191,8 @@ with col2:
         with st.spinner("AI đang phân tích và sáng tạo..."):
             response_text = ""
             try:
-                request_for_gemini = META_PROMPT_FOR_GEMINI.format(user_idea=user_idea)
+                # Gửi cả style người dùng chọn vào prompt
+                request_for_gemini = META_PROMPT_FOR_GEMINI.format(user_idea=user_idea, style=selected_style)
                 response = gemini_model.generate_content(request_for_gemini)
 
                 if not response.text or not response.text.strip():
@@ -197,6 +203,7 @@ with col2:
                 extracted_data = json.loads(response_text)
 
                 prompt_data = {
+                    'style': selected_style,
                     'subject_description': extracted_data.get('subject_description', 'a scene'),
                     'core_action': extracted_data.get('core_action', 'an action'),
                     'setting_description': extracted_data.get('setting_description', 'a location'),
