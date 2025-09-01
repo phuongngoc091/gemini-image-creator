@@ -4,7 +4,7 @@ from PIL import Image
 import json
 
 # --- CẤU HÌNH TRANG VÀ CSS CHO GIAO DIỆN TỐI GIẢN ---
-st.set_page_config(layout="wide", page_title="Trợ lý Sáng tạo Video")
+st.set_page_config(layout="wide", page_title="Viết prompt tạo video với phuongngoc091")
 
 # CSS để có giao diện sạch sẽ, tối giản
 APPLE_STYLE_CSS = """
@@ -223,4 +223,4 @@ with col2:
         st.warning("Vui lòng nhập ý tưởng của bạn.")
 
 # --- FOOTER ---
-st.markdown('<div class="footer">thiết kế bởi phuongngoc091 | 0932 468 218</div>', unsafe_allow_html=True)
+st.markdown('<div class="footer">Thiết kế bởi: phuongngoc091 | 0932 468 218</div>', unsafe_allow_html=True)
