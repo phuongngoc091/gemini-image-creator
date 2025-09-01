@@ -50,13 +50,13 @@ APPLE_STYLE_CSS = """
     }
 
     /* Ô nhập liệu */
-    .stTextArea textarea, .stTextInput input {
+    .stTextArea textarea, .stTextInput input, .stSelectbox > div > div {
         background-color: #ffffff;
         border: 1px solid #d1d1d6;
         border-radius: 12px;
         padding: 10px;
     }
-    .stTextArea textarea:focus, .stTextInput input:focus {
+    .stTextArea textarea:focus, .stTextInput input:focus, .stSelectbox > div > div:focus-within {
          border-color: #007aff;
          box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.2);
     }
@@ -71,6 +71,7 @@ APPLE_STYLE_CSS = """
         border-color: #007aff;
         box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.2);
     }
+
 
     /* Box tải file lên */
     .stFileUploader {
@@ -122,22 +123,27 @@ Speech: {dialogue_section}
 Visual Effects: Create realistic effects like {visual_effects}.
 Audio: {audio_section}
 """
+
+# --- SIÊU PROMPT DÀNH CHO "BIÊN KỊCH AI" (PHIÊN BẢN 2.0 - ĐẠO DIỄN ĐIỆN ẢNH) ---
 META_PROMPT_FOR_GEMINI = """
-Analyze the user's Vietnamese video idea. Extract key information and translate it to English.
-The user has also chosen a specific visual style: "{style}". You must incorporate this style into your descriptions.
-Rewrite the dialogue in Vietnamese to be concise (under 8 seconds).
-Output a clean JSON object.
+You are a visionary film director and a master scriptwriter. Your task is to take a user's simple idea (in Vietnamese) and expand it into a rich, evocative, and technically detailed cinematic prompt for an advanced text-to-video AI model.
+
+**Your creative process:**
+1.  **Deconstruct & Envision:** Read the user's idea. Immediately start visualizing it as a movie scene. What is the core emotion? What is the unspoken story?
+2.  **Translate the Core:** Translate the fundamental elements (subject, action, setting, dialogue) into English.
+3.  **Creative Expansion (Most Important):** Do not just translate, ELEVATE. Based on the chosen `{style}` and the core idea, creatively add details that the user didn't explicitly state.
+    -   **For "subject_description"**: Describe their appearance, clothing, and subtle expressions.
+    -   **For "setting_description"**: Describe the time of day, the weather, specific details in the environment. Make it a living world.
+    -   **For "mood" and "visual_effects"**: Don't just state them. Describe *how* they are achieved. For example, instead of just "sad", describe "a melancholic mood created by soft rain streaking down a windowpane, with cool, blue-toned lighting."
+    -   **For "core_action" and "gesture"**: Describe the actions with cinematic verbs.
+4.  **Dialogue Processing:** If dialogue exists, rewrite it in Vietnamese to be authentic and concise (under 8s). If not, leave the dialogue field empty.
+5.  **Final Output:** Structure everything into a clean JSON object with the following fields: "subject_description", "core_action", "setting_description", "dialogue", "mood", "visual_effects", "voice_type".
+
+**Style Directive:** The user has chosen the style: "{style}". All your creative decisions must serve and enhance this style.
+
+**Analyze the following user's idea and produce a masterpiece-level JSON output.**
 
 User Idea: "{user_idea}"
-
-JSON fields:
-- "subject_description": (Translate to English) The main subject, described in the chosen style.
-- "core_action": (Translate to English) The main action.
-- "setting_description": (Translate to English) The location, described in the chosen style.
-- "dialogue": (Keep and rewrite in Vietnamese) The speech.
-- "mood": (Translate to English) The feeling of the scene, consistent with the chosen style.
-- "visual_effects": (Translate to English) Visual effects that enhance the chosen style.
-- "voice_type": (Translate to English) e.g., 'a warm female voice'.
 """
 
 # --- Cấu hình API Key ở thanh bên (sidebar) ---
@@ -168,7 +174,7 @@ with col1:
     st.subheader("Ý tưởng hình sang video")
     uploaded_file = st.file_uploader("Tải ảnh lên (tùy chọn)", type=["png", "jpg", "jpeg"])
     if uploaded_file:
-        st.image(Image.open(uploaded_file), caption="Khung hình khởi đầu", use_container_width=True)
+        st.image(Image.open(uploaded_file), caption="Khung hình khởi đầu", use_column_width=True)
 
     st.image(
         "https://ia600905.us.archive.org/0/items/Donate_png/1111111.jpg",
@@ -179,10 +185,21 @@ with col1:
 with col2:
     st.subheader("Ý tưởng của bạn")
     
-    # --- SỬA LỖI SELECTBOX TẠI ĐÂY ---
     style_options = ["Chân thực (Photorealistic)", "Hoạt hình 3D Pixar (3D Pixar Animation)", "Anime Nhật Bản (Japanese Anime)", "Tranh màu nước (Watercolor Painting)", "Phim tài liệu (Documentary)", "Phim cũ (Vintage Film)"]
-    selected_style = st.selectbox("Chọn phong cách video:", options=style_options, index=0) # index=0 để chọn "Chân thực" làm mặc định
     
+    is_style_disabled = (uploaded_file is not None)
+    
+    selected_style = st.selectbox(
+        "Chọn phong cách video:", 
+        options=style_options, 
+        index=0,
+        disabled=is_style_disabled,
+        help="Khi bạn tải ảnh lên, phong cách sẽ được tự động phân tích từ ảnh."
+    )
+    
+    if is_style_disabled:
+        st.info("ℹ️ Phong cách sẽ được tự động phân tích từ hình ảnh bạn đã tải lên.", icon="ℹ️")
+
     user_idea = st.text_area(
         "Nhập ý tưởng video bằng tiếng Việt:",
         height=210,
@@ -199,10 +216,15 @@ with col2:
             st.rerun()
 
     if submitted and user_idea:
-        with st.spinner("AI đang phân tích và sáng tạo..."):
+        if uploaded_file:
+            final_style = "Dựa trên phong cách của hình ảnh được cung cấp (In the style of the provided image)"
+        else:
+            final_style = selected_style
+            
+        with st.spinner("Đạo diễn AI đang phân tích và sáng tạo..."):
             response_text = ""
             try:
-                request_for_gemini = META_PROMPT_FOR_GEMINI.format(user_idea=user_idea, style=selected_style)
+                request_for_gemini = META_PROMPT_FOR_GEMINI.format(user_idea=user_idea, style=final_style)
                 response = gemini_model.generate_content(request_for_gemini)
 
                 if not response.text or not response.text.strip():
@@ -213,14 +235,15 @@ with col2:
                 extracted_data = json.loads(response_text)
 
                 prompt_data = {
-                    'style': selected_style,
+                    'style': final_style,
                     'subject_description': extracted_data.get('subject_description', 'a scene'),
                     'core_action': extracted_data.get('core_action', 'an action'),
                     'setting_description': extracted_data.get('setting_description', 'a location'),
                     'dialogue': extracted_data.get('dialogue', ''),
                     'mood': extracted_data.get('mood', 'neutral'),
                     'visual_effects': extracted_data.get('visual_effects', 'none'),
-                    'voice_type': extracted_data.get('voice_type', 'a voice')
+                    'voice_type': extracted_data.get('voice_type', 'a voice'),
+                    'gesture': extracted_data.get('gesture', 'a natural gesture') # Thêm gesture vào đây
                 }
 
                 if prompt_data['dialogue']:
