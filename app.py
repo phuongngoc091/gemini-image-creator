@@ -91,7 +91,7 @@ APPLE_STYLE_CSS = """
 st.markdown(APPLE_STYLE_CSS, unsafe_allow_html=True)
 
 # --- TIÊU ĐỀ ---
-st.title("Trợ lý Sáng tạo Video")
+st.title("Viết prompt tạo video với phuongngoc091")
 st.caption("Biến ý tưởng đơn giản của bạn thành một kịch bản video chi tiết.")
 
 # --- CÁC KHUÔN MẪU PROMPT (KHÔNG THAY ĐỔI) ---
@@ -151,7 +151,7 @@ except Exception as e:
 col1, col2 = st.columns([1, 2], gap="large")
 
 with col1:
-    st.subheader("Đầu vào")
+    st.subheader("Ý tưởng hình sang video")
     uploaded_file = st.file_uploader("Tải ảnh lên (tùy chọn)", type=["png", "jpg", "jpeg"])
     if uploaded_file:
         st.image(Image.open(uploaded_file), caption="Khung hình khởi đầu", use_column_width=True)
