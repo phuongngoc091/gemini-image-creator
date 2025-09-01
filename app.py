@@ -131,7 +131,29 @@ with col2:
                     response_text = response.text.replace("```json", "").replace("```", "").strip()
                     extracted_data = json.loads(response_text)
 
-                    # Bước 2: Lắp ráp prompt cuối cùng
+                    # Bước 2: Kiểm tra và gán giá trị từ JSON một cách an toàn
+                    prompt_data = {
+                        'subject_description': extracted_data.get('subject_description', 'a person in a scene'),
+                        'core_action': extracted_data.get('core_action', 'performing an action'),
+                        'setting_description': extracted_data.get('setting_description', 'an interesting setting'),
+                        'dialogue': extracted_data.get('dialogue', ''),
+                        'language': extracted_data.get('language', 'None'),
+                        'voice_type': extracted_data.get('voice_type', 'a suitable voice'),
+                        'tone': extracted_data.get('tone', 'a suitable tone'),
+                        'gesture': extracted_data.get('gesture', 'a natural gesture'),
+                        'visual_effects': extracted_data.get('visual_effects', 'cinematic effects'),
+                        'mood': extracted_data.get('mood', 'an interesting mood')
+                    }
+
+                    # Xử lý phần lời thoại và âm thanh để có thể ẩn đi nếu không có
+                    if prompt_data['dialogue']:
+                        prompt_data['dialogue_section'] = f"Animate the subject's mouth to synchronize with the speech: \"{prompt_data['dialogue']}\"."
+                        prompt_data['audio_section'] = f"Generate natural-sounding {prompt_data['language']} speech for the dialogue, spoken by a {prompt_data['voice_type']} with a {prompt_data['tone']} tone."
+                    else:
+                        prompt_data['dialogue_section'] = "No dialogue."
+                        prompt_data['audio_section'] = "No speech audio, only ambient sounds matching the scene."
+
+                    # Bước 3: Lắp ráp prompt cuối cùng
                     final_prompt = ""
                     if uploaded_file is not None:
                         # Option 1: Có ảnh
@@ -140,29 +162,8 @@ with col2:
                         # Option 2: Chỉ có text
                         template = TEXT_TO_VIDEO_TEMPLATE
                     
-                    # Xử lý phần lời thoại và âm thanh để có thể ẩn đi nếu không có
-                    if extracted_data.get("dialogue"):
-                        extracted_data['dialogue_section'] = f"Animate the subject's mouth to synchronize with the speech: \"{extracted_data['dialogue']}\"."
-                        extracted_data['audio_section'] = f"Generate natural-sounding {extracted_data['language']} speech for the dialogue, spoken by a {extracted_data['voice_type']} with a {extracted_data['tone']} tone."
-                    else:
-                        extracted_data['dialogue_section'] = "No dialogue."
-                        extracted_data['audio_section'] = "No speech audio, only ambient sounds matching the scene."
+                    final_prompt = template.format(**prompt_data)
 
-                    # Đoạn code mới linh hoạt hơn
-                    try:
-                        final_prompt = template.format(
-                            subject_description=extracted_data.get('subject_description', 'a person in a scene'),
-                            core_action=extracted_data.get('core_action', 'performing an action'),
-                            setting_description=extracted_data.get('setting_description', 'an interesting setting'),
-                            dialogue_section=extracted_data.get('dialogue_section', 'No dialogue.'),
-                            audio_section=extracted_data.get('audio_section', 'No speech audio.'),
-                            gesture=extracted_data.get('gesture', 'a natural gesture'),
-                            visual_effects=extracted_data.get('visual_effects', 'cinematic effects'),
-                            mood=extracted_data.get('mood', 'an interesting mood')
-                        )
-                    except KeyError as e:
-                        st.error(f"Lỗi: AI đã không trả về đủ các trường dữ liệu cần thiết. Vui lòng thử lại. Trường bị thiếu: {e}")
-                        st.stop() # Dừng thực thi nếu có lỗi nghiêm trọng
                     # Hiển thị kết quả
                     st.divider()
                     st.subheader("🎬 Kịch bản Prompt chi tiết (Tiếng Anh)")
