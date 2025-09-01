@@ -3,64 +3,75 @@ import google.generativeai as genai
 from PIL import Image
 import json
 
-# --- CẤU HÌNH TRANG VÀ CSS CHO GIAO DIỆN CYBERPUNK ---
-st.set_page_config(layout="wide", page_title="AI Video Scripting Core")
+# --- CẤU HÌNH TRANG VÀ CSS CHO GIAO DIỆN TỐI GIẢN ---
+st.set_page_config(layout="wide", page_title="Trợ lý Sáng tạo Video")
 
-# CSS để thay đổi giao diện
-CYBERPUNK_CSS = """
+# CSS để có giao diện sạch sẽ, tối giản
+APPLE_STYLE_CSS = """
 <style>
-    /* Nền và font chữ chính */
+    /* Font chữ và nền chính */
     body, .stApp {
-        background-color: #0d0221; /* Nền tím than đậm */
-        color: #f0f2f6;
-        font-family: 'Courier New', Courier, monospace;
+        background-color: #f0f2f5; /* Nền xám rất nhạt */
+        color: #000000;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
     }
 
-    /* Tiêu đề chính */
-    h1 {
-        color: #00f6ff; /* Cyan neon */
-        text-shadow: 0 0 10px #00f6ff, 0 0 20px #00f6ff;
-    }
-
-    /* Tiêu đề phụ */
-    h2, h3 {
-        color: #ff00ff; /* Magenta neon */
-        border-bottom: 2px solid #ff00ff;
-        padding-bottom: 5px;
-    }
-
-    /* Nút bấm */
-    .stButton > button {
-        background-color: transparent;
-        color: #00f6ff;
-        border: 2px solid #00f6ff;
-        border-radius: 0px;
-        transition: all 0.3s ease-in-out;
-    }
-    .stButton > button:hover {
-        background-color: #00f6ff;
-        color: #0d0221;
-        box-shadow: 0 0 15px #00f6ff;
+    /* Tiêu đề */
+    h1, h2, h3 {
+        font-weight: 600;
     }
     
+    /* Các thành phần chính */
+    .stApp > header {
+        background-color: transparent;
+    }
+    
+    /* Nút bấm */
+    .stButton > button {
+        background-color: #007aff; /* Xanh dương của Apple */
+        color: white;
+        border: none;
+        border-radius: 12px;
+        padding: 10px 24px;
+        transition: all 0.2s ease-in-out;
+        font-weight: 500;
+    }
+    .stButton > button:hover {
+        background-color: #0056b3;
+        color: white;
+    }
+    /* Nút làm mới (phụ) */
+    .stButton:has(button:contains("Làm mới")) > button {
+        background-color: #e9e9eb;
+        color: #000000;
+    }
+     .stButton:has(button:contains("Làm mới")) > button:hover {
+        background-color: #d1d1d6;
+    }
+
     /* Ô nhập liệu */
     .stTextArea textarea, .stTextInput input {
-        background-color: #1a0a38;
-        color: #f0f2f6;
-        border: 1px solid #ff00ff;
-        border-radius: 0px;
+        background-color: #ffffff;
+        border: 1px solid #d1d1d6;
+        border-radius: 12px;
+        padding: 10px;
+    }
+    .stTextArea textarea:focus, .stTextInput input:focus {
+         border-color: #007aff;
+         box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.2);
     }
 
     /* Box tải file lên */
     .stFileUploader {
-        background-color: #1a0a38;
-        border: 2px dashed #ff00ff;
-        border-radius: 0px;
+        background-color: #ffffff;
+        border: 2px dashed #d1d1d6;
+        border-radius: 12px;
     }
     
     /* Thanh sidebar */
     .stSidebar {
-        background-color: #1a0a38;
+        background-color: #f0f2f5;
+        border-right: 1px solid #d1d1d6;
     }
     
     /* Dòng footer */
@@ -69,19 +80,19 @@ CYBERPUNK_CSS = """
         left: 0;
         bottom: 0;
         width: 100%;
-        background-color: #1a0a38;
+        background-color: #f0f2f5;
         color: #8a8a8a;
         text-align: center;
         padding: 10px;
-        border-top: 1px solid #ff00ff;
+        font-size: 14px;
     }
 </style>
 """
-st.markdown(CYBERPUNK_CSS, unsafe_allow_html=True)
+st.markdown(APPLE_STYLE_CSS, unsafe_allow_html=True)
 
 # --- TIÊU ĐỀ ---
-st.title(">> AI VIDEO SCRIPTING CORE_")
-st.caption("Initializing prompt amplification sequence...")
+st.title("Trợ lý Sáng tạo Video")
+st.caption("Biến ý tưởng đơn giản của bạn thành một kịch bản video chi tiết.")
 
 # --- CÁC KHUÔN MẪU PROMPT (KHÔNG THAY ĐỔI) ---
 IMAGE_TO_VIDEO_TEMPLATE = """
@@ -117,66 +128,62 @@ JSON fields:
 
 # --- Cấu hình API Key ở thanh bên (sidebar) ---
 with st.sidebar:
-    st.header("SYSTEM CONFIG_")
+    st.header("Cấu hình")
     try:
         google_api_key = st.secrets["GOOGLE_API_KEY"]
-        st.success("API Key Status: CONNECTED", icon="✅")
+        st.success("API Key đã được kết nối.", icon="✅")
     except (FileNotFoundError, KeyError):
-        st.warning("API Key: NOT FOUND. Please input manually.", icon="⚠️")
-        google_api_key = st.text_input("INPUT API KEY:", type="password")
+        st.warning("Không tìm thấy API Key. Vui lòng nhập thủ công.", icon="⚠️")
+        google_api_key = st.text_input("Nhập Google API Key của bạn:", type="password", label_visibility="collapsed")
 
 if not google_api_key:
-    st.error("FATAL ERROR: API Key is required to initialize.")
+    st.error("Vui lòng nhập API Key trong thanh cấu hình để bắt đầu.")
     st.stop()
 
 try:
     genai.configure(api_key=google_api_key)
     gemini_model = genai.GenerativeModel(model_name="gemini-2.5-flash")
 except Exception as e:
-    st.error(f"API CONFIGURATION FAILED: {e}")
+    st.error(f"Lỗi cấu hình API Key: {e}")
     st.stop()
 
 # --- Giao diện ứng dụng ---
-col1, col2 = st.columns([1, 2])
+col1, col2 = st.columns([1, 2], gap="large")
+
 with col1:
-    st.subheader("UPLINK_")
-    uploaded_file = st.file_uploader("Drag & Drop Image (Optional: Image -> Video)", type=["png", "jpg", "jpeg"])
+    st.subheader("Đầu vào")
+    uploaded_file = st.file_uploader("Tải ảnh lên (tùy chọn)", type=["png", "jpg", "jpeg"])
     if uploaded_file:
-        st.image(Image.open(uploaded_file), caption="[Initial Frame Buffer]", use_column_width=True)
+        st.image(Image.open(uploaded_file), caption="Khung hình khởi đầu", use_column_width=True)
 
 with col2:
-    st.subheader("IDEA INPUT_")
+    st.subheader("Ý tưởng của bạn")
     
-    # Sử dụng session_state để quản lý nội dung ô text
-    if 'user_idea' not in st.session_state:
-        st.session_state.user_idea = ""
-
     user_idea = st.text_area(
-        "Input video concept (Vietnamese):",
-        height=200,
-        placeholder="e.g., một cô gái đi trên Cầu Vàng có tuyết rơi và nói 'Chào mọi người! Tuyết rơi đẹp không?'",
-        key="user_idea_input" # Đặt key để truy cập
+        "Nhập ý tưởng video bằng tiếng Việt:",
+        height=210,
+        placeholder="Ví dụ: một cô gái đi trên Cầu Vàng có tuyết rơi và nói 'Chào mọi người! Tuyết rơi đẹp không?'",
+        key="user_idea_input"
     )
     
-    # Form chứa các nút bấm
+    # Các nút bấm
     form_col1, form_col2 = st.columns([1, 1])
     with form_col1:
-        submitted = st.button("EXECUTE SCRIPT_")
+        submitted = st.button("Tạo kịch bản", use_container_width=True)
     with form_col2:
-        # Nút làm mới, xóa nội dung và chạy lại app
-        if st.button("CLEAR INPUT_"):
-            st.session_state.user_idea = ""
+        if st.button("Làm mới", use_container_width=True):
+            st.session_state.user_idea_input = ""
             st.rerun()
 
     if submitted and user_idea:
-        with st.spinner("AI CORE: Analyzing and creating script..."):
+        with st.spinner("AI đang phân tích và sáng tạo..."):
             response_text = ""
             try:
                 request_for_gemini = META_PROMPT_FOR_GEMINI.format(user_idea=user_idea)
                 response = gemini_model.generate_content(request_for_gemini)
 
                 if not response.text or not response.text.strip():
-                    st.error("AI RESPONSE ERROR: No content returned. The request may have been blocked for safety or policy reasons. Please try a different idea.")
+                    st.error("Lỗi: AI không trả về nội dung. Yêu cầu của bạn có thể đã bị chặn. Vui lòng thử lại với một ý tưởng khác.")
                     st.stop()
 
                 response_text = response.text.replace("```json", "").replace("```", "").strip()
@@ -203,17 +210,17 @@ with col2:
                 final_prompt = template.format(**prompt_data)
 
                 st.divider()
-                st.subheader("FINAL PROMPT SCRIPT_")
-                st.text_area("Optimized output for video model:", value=final_prompt, height=400)
+                st.subheader("Kịch bản Prompt chi tiết")
+                st.text_area("Prompt (tiếng Anh) đã được tối ưu cho AI tạo video:", value=final_prompt, height=350)
 
             except json.JSONDecodeError:
-                st.error("JSON DECODING FAILED: AI did not return valid JSON. Please try again with a clearer idea.")
-                st.write("Raw data from AI (for debugging):", response_text)
+                st.error("Lỗi: AI trả về định dạng không hợp lệ. Vui lòng thử lại.")
+                st.write("Dữ liệu thô từ AI (để gỡ lỗi):", response_text)
             except Exception as e:
-                st.error(f"UNEXPECTED ERROR: {e}")
+                st.error(f"Đã xảy ra lỗi: {e}")
 
     elif submitted:
-        st.warning("WARNING: Idea input field is empty.")
+        st.warning("Vui lòng nhập ý tưởng của bạn.")
 
 # --- FOOTER ---
 st.markdown('<div class="footer">thiết kế bởi phuongngoc091 | 0932 468 218</div>', unsafe_allow_html=True)
