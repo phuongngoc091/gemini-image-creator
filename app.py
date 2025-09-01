@@ -3,12 +3,87 @@ import google.generativeai as genai
 from PIL import Image
 import json
 
-# --- Cấu hình trang và tiêu đề ---
-st.set_page_config(layout="wide", page_title="Trợ lý Sáng tạo Video AI")
-st.title("🎬 Trợ lý Sáng tạo Video AI")
-st.caption("Tạo kịch bản video chi tiết từ ý tưởng đơn giản của bạn.")
+# --- CẤU HÌNH TRANG VÀ CSS CHO GIAO DIỆN CYBERPUNK ---
+st.set_page_config(layout="wide", page_title="AI Video Scripting Core")
 
-# --- CÁC KHUÔN MẪU PROMPT (TEMPLATES) ---
+# CSS để thay đổi giao diện
+CYBERPUNK_CSS = """
+<style>
+    /* Nền và font chữ chính */
+    body, .stApp {
+        background-color: #0d0221; /* Nền tím than đậm */
+        color: #f0f2f6;
+        font-family: 'Courier New', Courier, monospace;
+    }
+
+    /* Tiêu đề chính */
+    h1 {
+        color: #00f6ff; /* Cyan neon */
+        text-shadow: 0 0 10px #00f6ff, 0 0 20px #00f6ff;
+    }
+
+    /* Tiêu đề phụ */
+    h2, h3 {
+        color: #ff00ff; /* Magenta neon */
+        border-bottom: 2px solid #ff00ff;
+        padding-bottom: 5px;
+    }
+
+    /* Nút bấm */
+    .stButton > button {
+        background-color: transparent;
+        color: #00f6ff;
+        border: 2px solid #00f6ff;
+        border-radius: 0px;
+        transition: all 0.3s ease-in-out;
+    }
+    .stButton > button:hover {
+        background-color: #00f6ff;
+        color: #0d0221;
+        box-shadow: 0 0 15px #00f6ff;
+    }
+    
+    /* Ô nhập liệu */
+    .stTextArea textarea, .stTextInput input {
+        background-color: #1a0a38;
+        color: #f0f2f6;
+        border: 1px solid #ff00ff;
+        border-radius: 0px;
+    }
+
+    /* Box tải file lên */
+    .stFileUploader {
+        background-color: #1a0a38;
+        border: 2px dashed #ff00ff;
+        border-radius: 0px;
+    }
+    
+    /* Thanh sidebar */
+    .stSidebar {
+        background-color: #1a0a38;
+    }
+    
+    /* Dòng footer */
+    .footer {
+        position: fixed;
+        left: 0;
+        bottom: 0;
+        width: 100%;
+        background-color: #1a0a38;
+        color: #8a8a8a;
+        text-align: center;
+        padding: 10px;
+        border-top: 1px solid #ff00ff;
+    }
+</style>
+"""
+st.markdown(CYBERPUNK_CSS, unsafe_allow_html=True)
+
+# --- TIÊU ĐỀ ---
+st.title(">> AI VIDEO SCRIPTING CORE_")
+st.caption("Initializing prompt amplification sequence...")
+
+# --- CÁC KHUÔN MẪU PROMPT (KHÔNG THAY ĐỔI) ---
 IMAGE_TO_VIDEO_TEMPLATE = """
 Initial Frame: Use the provided image of {subject_description}.
 Animation: Animate the subject to {core_action}.
@@ -23,8 +98,6 @@ Speech: {dialogue_section}
 Visual Effects: Create realistic effects like {visual_effects}.
 Audio: {audio_section}
 """
-
-# --- SIÊU PROMPT DÀNH CHO "BIÊN KỊCH AI" (PHIÊN BẢN ĐƠN GIẢN HÓA) ---
 META_PROMPT_FOR_GEMINI = """
 Analyze the user's Vietnamese video idea. Extract key information and translate it to English.
 Rewrite the dialogue in Vietnamese to be concise (under 8 seconds).
@@ -44,56 +117,71 @@ JSON fields:
 
 # --- Cấu hình API Key ở thanh bên (sidebar) ---
 with st.sidebar:
-    st.header("Cấu hình")
+    st.header("SYSTEM CONFIG_")
     try:
         google_api_key = st.secrets["GOOGLE_API_KEY"]
-        st.success("Đã tìm thấy API Key!", icon="✅")
+        st.success("API Key Status: CONNECTED", icon="✅")
     except (FileNotFoundError, KeyError):
-        st.warning("Không tìm thấy API Key trong Secrets. Vui lòng nhập thủ công.", icon="⚠️")
-        google_api_key = st.text_input("Nhập Google API Key của bạn:", type="password")
+        st.warning("API Key: NOT FOUND. Please input manually.", icon="⚠️")
+        google_api_key = st.text_input("INPUT API KEY:", type="password")
 
 if not google_api_key:
-    st.error("Vui lòng nhập API Key của bạn để bắt đầu.")
+    st.error("FATAL ERROR: API Key is required to initialize.")
     st.stop()
 
 try:
     genai.configure(api_key=google_api_key)
     gemini_model = genai.GenerativeModel(model_name="gemini-2.5-flash")
 except Exception as e:
-    st.error(f"Lỗi cấu hình API Key: {e}")
+    st.error(f"API CONFIGURATION FAILED: {e}")
     st.stop()
 
 # --- Giao diện ứng dụng ---
 col1, col2 = st.columns([1, 2])
 with col1:
-    st.subheader("🖼️ Đầu vào")
-    uploaded_file = st.file_uploader("Tải ảnh lên (cho tùy chọn Ảnh -> Video)", type=["png", "jpg", "jpeg"])
+    st.subheader("UPLINK_")
+    uploaded_file = st.file_uploader("Drag & Drop Image (Optional: Image -> Video)", type=["png", "jpg", "jpeg"])
     if uploaded_file:
-        st.image(Image.open(uploaded_file), caption="Khung hình khởi đầu", use_column_width=True)
+        st.image(Image.open(uploaded_file), caption="[Initial Frame Buffer]", use_column_width=True)
 
 with col2:
-    st.subheader("💡 Ý tưởng của bạn")
-    with st.form("prompt_form"):
-        user_idea = st.text_area("Nhập ý tưởng video bằng tiếng Việt:", height=200, placeholder="Ví dụ: một cô gái đi trên Cầu Vàng có tuyết rơi và nói 'Chào mọi người! Tuyết rơi đẹp không?'")
-        submitted = st.form_submit_button("Tạo kịch bản Prompt")
+    st.subheader("IDEA INPUT_")
+    
+    # Sử dụng session_state để quản lý nội dung ô text
+    if 'user_idea' not in st.session_state:
+        st.session_state.user_idea = ""
+
+    user_idea = st.text_area(
+        "Input video concept (Vietnamese):",
+        height=200,
+        placeholder="e.g., một cô gái đi trên Cầu Vàng có tuyết rơi và nói 'Chào mọi người! Tuyết rơi đẹp không?'",
+        key="user_idea_input" # Đặt key để truy cập
+    )
+    
+    # Form chứa các nút bấm
+    form_col1, form_col2 = st.columns([1, 1])
+    with form_col1:
+        submitted = st.button("EXECUTE SCRIPT_")
+    with form_col2:
+        # Nút làm mới, xóa nội dung và chạy lại app
+        if st.button("CLEAR INPUT_"):
+            st.session_state.user_idea = ""
+            st.rerun()
 
     if submitted and user_idea:
-        with st.spinner("🤖 Biên kịch AI đang phân tích..."):
-            response_text = "" # Khởi tạo biến để tránh lỗi
+        with st.spinner("AI CORE: Analyzing and creating script..."):
+            response_text = ""
             try:
-                # Bước 1: Gọi AI để trích xuất JSON
                 request_for_gemini = META_PROMPT_FOR_GEMINI.format(user_idea=user_idea)
                 response = gemini_model.generate_content(request_for_gemini)
 
-                # --- BƯỚC KIỂM TRA PHẢN HỒI ---
                 if not response.text or not response.text.strip():
-                    st.error("Lỗi: AI không trả về nội dung. Yêu cầu của bạn có thể đã bị chặn vì lý do an toàn hoặc không hợp lệ. Vui lòng thử lại với một ý tưởng khác.")
+                    st.error("AI RESPONSE ERROR: No content returned. The request may have been blocked for safety or policy reasons. Please try a different idea.")
                     st.stop()
 
                 response_text = response.text.replace("```json", "").replace("```", "").strip()
                 extracted_data = json.loads(response_text)
 
-                # Bước 2: Gán giá trị an toàn
                 prompt_data = {
                     'subject_description': extracted_data.get('subject_description', 'a scene'),
                     'core_action': extracted_data.get('core_action', 'an action'),
@@ -104,7 +192,6 @@ with col2:
                     'voice_type': extracted_data.get('voice_type', 'a voice')
                 }
 
-                # Xử lý phần lời thoại
                 if prompt_data['dialogue']:
                     prompt_data['dialogue_section'] = f"Animate the subject's mouth to synchronize with the speech: \"{prompt_data['dialogue']}\"."
                     prompt_data['audio_section'] = f"Generate natural-sounding Vietnamese speech, spoken by {prompt_data['voice_type']}."
@@ -112,20 +199,21 @@ with col2:
                     prompt_data['dialogue_section'] = "No dialogue."
                     prompt_data['audio_section'] = "No speech audio, only ambient sounds."
 
-                # Bước 3: Lắp ráp prompt
                 template = IMAGE_TO_VIDEO_TEMPLATE if uploaded_file else TEXT_TO_VIDEO_TEMPLATE
                 final_prompt = template.format(**prompt_data)
 
-                # Hiển thị kết quả
                 st.divider()
-                st.subheader("🎬 Kịch bản Prompt chi tiết (Tiếng Anh)")
-                st.text_area("Prompt cuối cùng:", value=final_prompt, height=400)
+                st.subheader("FINAL PROMPT SCRIPT_")
+                st.text_area("Optimized output for video model:", value=final_prompt, height=400)
 
             except json.JSONDecodeError:
-                st.error("Lỗi: AI trả về định dạng không hợp lệ, không phải JSON.")
-                st.write("Dữ liệu thô từ AI (để gỡ lỗi):", response_text)
+                st.error("JSON DECODING FAILED: AI did not return valid JSON. Please try again with a clearer idea.")
+                st.write("Raw data from AI (for debugging):", response_text)
             except Exception as e:
-                st.error(f"Đã xảy ra lỗi: {e}")
+                st.error(f"UNEXPECTED ERROR: {e}")
 
     elif submitted:
-        st.warning("Vui lòng nhập ý tưởng của bạn.")
+        st.warning("WARNING: Idea input field is empty.")
+
+# --- FOOTER ---
+st.markdown('<div class="footer">thiết kế bởi phuongngoc091 | 0932 468 218</div>', unsafe_allow_html=True)
