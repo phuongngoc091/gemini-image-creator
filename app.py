@@ -3,102 +3,56 @@ import google.generativeai as genai
 from PIL import Image
 import json
 
-# --- CẤU HÌNH TRANG VÀ CSS CHO GIAO DIỆN TỐI GIẢN ---
+# --- CẤU HÌNH TRANG VÀ CSS ---
 st.set_page_config(layout="wide", page_title="Viết prompt tạo video với phuongngoc091")
 
 # CSS để có giao diện sạch sẽ, tối giản
 APPLE_STYLE_CSS = """
 <style>
-    /* Font chữ và nền chính */
-    body, .stApp {
-        background-color: #f0f2f5; /* Nền xám rất nhạt */
-        color: #000000;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
-    }
-
-    /* Tiêu đề */
-    h1, h2, h3 {
-        font-weight: 600;
-    }
-    
-    /* Các thành phần chính */
-    .stApp > header {
-        background-color: transparent;
-    }
-    
-    /* Nút bấm */
+    /* ... (Toàn bộ CSS giữ nguyên như cũ) ... */
+    body, .stApp { background-color: #f0f2f5; color: #000000; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    h1, h2, h3 { font-weight: 600; }
+    .stApp > header { background-color: transparent; }
     .stButton > button {
-        background-color: #007aff; /* Xanh dương của Apple */
-        color: white;
-        border: none;
-        border-radius: 12px;
-        padding: 10px 24px;
-        transition: all 0.2s ease-in-out;
-        font-weight: 500;
+        background-color: #007aff; color: white; border: none; border-radius: 12px;
+        padding: 10px 24px; transition: all 0.2s ease-in-out; font-weight: 500;
     }
-    .stButton > button:hover {
-        background-color: #0056b3;
-        color: white;
-    }
-    /* Nút làm mới (phụ) */
-    .stButton:has(button:contains("Làm mới")) > button {
-        background-color: #e9e9eb;
-        color: #000000;
-    }
-     .stButton:has(button:contains("Làm mới")) > button:hover {
-        background-color: #d1d1d6;
-    }
-
-    /* Ô nhập liệu và Selectbox */
+    .stButton > button:hover { background-color: #0056b3; color: white; }
+    .stButton > button:disabled { background-color: #e9e9eb; color: #8a8a8a; border-color: #d1d1d6; }
+    .stButton:has(button:contains("Làm mới")) > button { background-color: #e9e9eb; color: #000000; }
+    .stButton:has(button:contains("Làm mới")) > button:hover { background-color: #d1d1d6; }
     .stTextArea textarea, .stTextInput input, .stSelectbox div[data-baseweb="select"] > div {
-        background-color: #ffffff;
-        border: 1px solid #d1d1d6;
-        border-radius: 12px; /* Áp dụng bo tròn cho tất cả */
-        padding: 10px;
+        background-color: #ffffff; border: 1px solid #d1d1d6; border-radius: 12px; padding: 10px;
     }
     .stTextArea textarea:focus, .stTextInput input:focus, .stSelectbox div[data-baseweb="select"] > div:focus-within {
-         border-color: #007aff;
-         box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.2);
+        border-color: #007aff; box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.2);
     }
-
-    /* Box tải file lên */
-    .stFileUploader {
-        background-color: #ffffff;
-        border: 2px dashed #d1d1d6;
-        border-radius: 12px;
-    }
-    
-    /* Thanh sidebar */
-    .stSidebar {
-        background-color: #f0f2f5;
-        border-right: 1px solid #d1d1d6;
-    }
-    
-    /* Dòng footer */
+    .stFileUploader { background-color: #ffffff; border: 2px dashed #d1d1d6; border-radius: 12px; }
+    .stSidebar { background-color: #f0f2f5; border-right: 1px solid #d1d1d6; }
     .footer {
-        position: fixed;
-        left: 0;
-        bottom: 0;
-        width: 100%;
-        background-color: #f0f2f5;
-        color: #8a8a8a;
-        text-align: center;
-        padding: 10px;
-        font-size: 14px;
+        position: fixed; left: 0; bottom: 0; width: 100%; background-color: #f0f2f5;
+        color: #8a8a8a; text-align: center; padding: 10px; font-size: 14px;
     }
 </style>
 """
 st.markdown(APPLE_STYLE_CSS, unsafe_allow_html=True)
 
+# --- KHỞI TẠO SESSION STATE ---
+if 'result_generated' not in st.session_state:
+    st.session_state.result_generated = False
+if 'user_idea' not in st.session_state:
+    st.session_state.user_idea = ""
+
 # --- TIÊU ĐỀ ---
 st.title("Viết prompt tạo video với phuongngoc091")
 st.caption("Biến ý tưởng đơn giản của bạn thành một kịch bản video chi tiết.")
 
-# --- CÁC KHUÔN MẪU PROMPT (KHÔNG THAY ĐỔI) ---
+# --- CÁC KHUÔN MẪU PROMPT ---
 IMAGE_TO_VIDEO_TEMPLATE = """
 Style: {style}
 Initial Frame: Use the provided image of {subject_description}.
 Animation: Animate the subject to {core_action}.
+Camera Motion: {camera_motion}.
 Speech: {dialogue_section}
 Visual Effects: Maintain the original atmosphere. Animate effects like {visual_effects}.
 Audio: {audio_section}
@@ -107,45 +61,43 @@ TEXT_TO_VIDEO_TEMPLATE = """
 Style: {style}
 Scene Description: A cinematic, 8k, photorealistic shot of {subject_description} in {setting_description}. The mood is {mood}.
 Animation: Animate the subject to {core_action}.
+Camera Motion: {camera_motion}.
 Speech: {dialogue_section}
 Visual Effects: Create realistic effects like {visual_effects}.
 Audio: {audio_section}
 """
-
-# --- SIÊU PROMPT DÀNH CHO "BIÊN KỊCH AI" (PHIÊN BẢN 2.1 - SIÊU CHẶT CHẼ) ---
 META_PROMPT_FOR_GEMINI = """
-You are a creative director AI. Your primary task is to convert a simple user idea (in Vietnamese) into a detailed cinematic prompt for a video AI model.
+You are a visionary film director AI. Your task is to take a user's simple idea (in Vietnamese) and expand it into a rich, detailed cinematic prompt.
 
 **CRITICAL OUTPUT REQUIREMENTS:**
-1.  **LANGUAGE:** All JSON values MUST be in ENGLISH, with only ONE exception.
-2.  **EXCEPTION FOR DIALOGUE:** The value for the "dialogue" field MUST remain in its original VIETNAMESE.
-3.  **FORMAT:** The entire final output MUST be a single, clean JSON object. Do not add any explanatory text before or after the JSON block.
+1.  **LANGUAGE:** All JSON values MUST be in ENGLISH, except for the "dialogue" field.
+2.  **DIALOGUE:** The "dialogue" value MUST remain in VIETNAMESE. If the user provides dialogue, rewrite it to be concise (under 8s). If not, it should be an empty string.
+3.  **FORMAT:** The entire output MUST be a single, clean JSON object.
 
 **CREATIVE PROCESS:**
-1.  **Analyze Idea:** Read the user's idea and the chosen `{style}`.
-2.  **Envision Scene:** Visualize the idea as a movie scene. Add creative details for subject appearance, setting, mood, lighting, and camera work to elevate the concept.
-3.  **Rewrite Dialogue:** If the user provides dialogue, rewrite it in VIETNAMESE to be natural and concise (under 8 seconds). If not, the "dialogue" field should be an empty string.
-4.  **Translate & Build JSON:** Translate all descriptive elements into fluent English. Then, construct the JSON object with the following fields: "subject_description", "core_action", "setting_description", "dialogue", "mood", "visual_effects", "voice_type", "gesture".
+-   Analyze the user's idea and the chosen `{style}`.
+-   Envision the scene and add creative details for subject, setting, mood, lighting, and camera work.
+-   Translate descriptive elements to English.
+-   Construct a JSON object with fields: "subject_description", "core_action", "setting_description", "dialogue", "mood", "visual_effects", "voice_type", "gesture", "camera_motion".
 
-**STYLE DIRECTIVE:** The user has selected the style: "{style}". All creative descriptions must reflect this choice.
+**STYLE DIRECTIVE:** The user has selected the style: "{style}".
 
 **Analyze the user's idea below and generate the JSON output, strictly following all critical requirements.**
-
 User Idea: "{user_idea}"
 """
 
-# --- Cấu hình API Key ở thanh bên (sidebar) ---
+# --- Cấu hình API Key ---
 with st.sidebar:
     st.header("Cấu hình")
     try:
         google_api_key = st.secrets["GOOGLE_API_KEY"]
         st.success("API Key đã được kết nối.", icon="✅")
     except (FileNotFoundError, KeyError):
-        st.warning("Không tìm thấy API Key. Vui lòng nhập thủ công.", icon="⚠️")
-        google_api_key = st.text_input("Nhập Google API Key của bạn:", type="password", label_visibility="collapsed")
+        st.warning("Không tìm thấy API Key.", icon="⚠️")
+        google_api_key = st.text_input("Nhập Google API Key:", type="password", label_visibility="collapsed")
 
 if not google_api_key:
-    st.error("Vui lòng nhập API Key trong thanh cấu hình để bắt đầu.")
+    st.error("Vui lòng nhập API Key để bắt đầu.")
     st.stop()
 
 try:
@@ -162,51 +114,44 @@ with col1:
     st.subheader("Ý tưởng hình sang video")
     uploaded_file = st.file_uploader("Tải ảnh lên (tùy chọn)", type=["png", "jpg", "jpeg"])
     if uploaded_file:
-        # --- ĐÃ SỬA LỖI CẢNH BÁO TẠI ĐÂY ---
         st.image(Image.open(uploaded_file), caption="Khung hình khởi đầu", use_container_width=True)
-
-    st.image(
-        "https://ia600905.us.archive.org/0/items/Donate_png/1111111.jpg",
-        caption="Donate",
-        width=250
-    )
+    st.image("https://ia600905.us.archive.org/0/items/Donate_png/1111111.jpg", caption="Donate", width=250)
 
 with col2:
     st.subheader("Ý tưởng của bạn")
-    
-    style_options = ["Chân thực (Photorealistic)", "Hoạt hình 3D Pixar (3D Pixar Animation)", "Anime Nhật Bản (Japanese Anime)", "Tranh màu nước (Watercolor Painting)", "Phim tài liệu (Documentary)", "Phim cũ (Vintage Film)"]
-    
+    style_options = ["Chân thực (Photorealistic)", "Hoạt hình 3D Pixar", "Anime Nhật Bản", "Tranh màu nước", "Phim tài liệu", "Phim cũ"]
     is_style_disabled = (uploaded_file is not None)
     
     selected_style = st.selectbox(
-        "Chọn phong cách video:", 
-        options=style_options, 
-        index=0,
-        disabled=is_style_disabled,
-        help="Khi bạn tải ảnh lên, phong cách sẽ được tự động phân tích từ ảnh."
+        "Chọn phong cách video:", options=style_options, index=0,
+        disabled=is_style_disabled, help="Khi tải ảnh lên, phong cách sẽ được phân tích từ ảnh."
     )
     
     if is_style_disabled:
-        st.info("ℹ️ Phong cách sẽ được tự động phân tích từ hình ảnh bạn đã tải lên.", icon="ℹ️")
+        st.info("ℹ️ Phong cách sẽ được tự động phân tích từ hình ảnh bạn đã tải lên.")
 
     user_idea = st.text_area(
-        "Nhập ý tưởng video bằng tiếng Việt:",
-        height=210,
+        "Nhập ý tưởng video bằng tiếng Việt:", height=210,
         placeholder="Ví dụ: Thầy giáo bước lên bục giảng, mỉm cười nói: 'Xin chào các em'",
-        key="user_idea_input"
+        key="user_idea"
     )
     
     form_col1, form_col2 = st.columns([1, 1])
     with form_col1:
         submitted = st.button("Tạo kịch bản", use_container_width=True)
     with form_col2:
-        if st.button("Làm mới", use_container_width=True):
-            st.session_state.user_idea_input = ""
-            st.rerun()
+        # Nút "Làm mới" chỉ bật khi đã có kết quả
+        if st.button("Làm mới", use_container_width=True, disabled=not st.session_state.result_generated):
+            st.session_state.user_idea = ""
+            st.session_state.result_generated = False
+            # Không cần st.rerun() để tránh load lại trang
+
+    # Placeholder để chứa kết quả
+    result_placeholder = st.empty()
 
     if submitted and user_idea:
         if uploaded_file:
-            final_style = "Dựa trên phong cách của hình ảnh được cung cấp (In the style of the provided image)"
+            final_style = "Dựa trên phong cách của hình ảnh được cung cấp"
         else:
             final_style = selected_style
             
@@ -217,7 +162,7 @@ with col2:
                 response = gemini_model.generate_content(request_for_gemini)
 
                 if not response.text or not response.text.strip():
-                    st.error("Lỗi: AI không trả về nội dung. Yêu cầu của bạn có thể đã bị chặn. Vui lòng thử lại với một ý tưởng khác.")
+                    st.error("Lỗi: AI không trả về nội dung. Yêu cầu của bạn có thể đã bị chặn.")
                     st.stop()
 
                 start_index = response.text.find('{')
@@ -228,11 +173,10 @@ with col2:
                     extracted_data = json.loads(response_text)
                 else:
                     st.error("Lỗi: Không tìm thấy dữ liệu JSON hợp lệ trong phản hồi của AI.")
-                    st.write("Dữ liệu thô từ AI (để gỡ lỗi):", response.text)
+                    st.write("Dữ liệu thô từ AI:", response.text)
                     st.stop()
 
                 prompt_data = {
-                    'style': final_style,
                     'subject_description': extracted_data.get('subject_description', 'a scene'),
                     'core_action': extracted_data.get('core_action', 'an action'),
                     'setting_description': extracted_data.get('setting_description', 'a location'),
@@ -240,11 +184,14 @@ with col2:
                     'mood': extracted_data.get('mood', 'neutral'),
                     'visual_effects': extracted_data.get('visual_effects', 'none'),
                     'voice_type': extracted_data.get('voice_type', 'a voice'),
-                    'gesture': extracted_data.get('gesture', 'a natural gesture')
+                    'gesture': extracted_data.get('gesture', 'a natural gesture'),
+                    'camera_motion': extracted_data.get('camera_motion', 'a stable, static shot')
                 }
+                
+                prompt_data['style'] = final_style if not uploaded_file else "In the style of the provided image"
 
                 if prompt_data['dialogue']:
-                    prompt_data['dialogue_section'] = f"Animate the subject's mouth to synchronize with the speech: \"{prompt_data['dialogue']}\"."
+                    prompt_data['dialogue_section'] = f"Animate mouth to sync with: \"{prompt_data['dialogue']}\"."
                     prompt_data['audio_section'] = f"Generate natural-sounding Vietnamese speech, spoken by {prompt_data['voice_type']}."
                 else:
                     prompt_data['dialogue_section'] = "No dialogue."
@@ -253,15 +200,18 @@ with col2:
                 template = IMAGE_TO_VIDEO_TEMPLATE if uploaded_file else TEXT_TO_VIDEO_TEMPLATE
                 final_prompt = template.format(**prompt_data)
 
-                st.divider()
-                st.subheader("Kịch bản Prompt chi tiết")
-                st.text_area("Prompt (tiếng Anh) đã được tối ưu cho AI tạo video:", value=final_prompt, height=350)
+                # Hiển thị kết quả vào placeholder
+                with result_placeholder.container():
+                    st.divider()
+                    st.subheader("Kịch bản Prompt chi tiết")
+                    st.text_area("Prompt (tiếng Anh) đã được tối ưu cho AI:", value=final_prompt, height=350)
+                
+                # Đánh dấu là đã có kết quả
+                st.session_state.result_generated = True
 
-            except json.JSONDecodeError:
-                st.error("Lỗi: AI trả về định dạng không hợp lệ, không phải JSON.")
-                st.write("Dữ liệu thô từ AI (để gỡ lỗi):", response_text)
             except Exception as e:
-                st.error(f"Đã xảy ra lỗi: {e}")
+                with result_placeholder.container():
+                    st.error(f"Đã xảy ra lỗi: {e}")
 
     elif submitted:
         st.warning("Vui lòng nhập ý tưởng của bạn.")
