@@ -97,12 +97,10 @@ def has_speech_intent(text: str) -> bool:
     return any(cue in t for cue in cues)
 
 def has_multi_dialogue_intent(text: str) -> bool:
-    """Ý tưởng có vẻ là hội thoại giữa nhiều người?"""
     t = (text or "").lower()
     cues = [
         "đối thoại","nói chuyện với nhau","trò chuyện","hỏi đáp","đối đáp",
-        "phỏng vấn","phỏng vấn nhau","conversation","interview","debate",
-        "hội thoại","trao đổi"
+        "phỏng vấn","phỏng vấn nhau","conversation","interview","debate","hội thoại","trao đổi"
     ]
     return any(cue in t for cue in cues)
 
@@ -174,7 +172,7 @@ Post: {postprocessing}
 Technical: duration {duration}s | aspect ratio {aspect_ratio} | fps {fps} | motion intensity {motion_intensity}
 """.strip()
 
-# === META PROMPT (JSON-only, nhiều nhân vật khi cần) ===
+# === META PROMPT (escape ngoặc nhọn minh hoạ để tránh KeyError) ===
 META_PROMPT_FOR_GEMINI = """
 You are a film director AI. Turn a short Vietnamese idea into a production-ready JSON for a video model.
 
@@ -185,7 +183,7 @@ HARD REQUIREMENTS
   (mentions cues like: lời thoại/thoại/nói/chào/hỏi/trả lời/đối thoại/thuyết minh/voice...).
 - If the idea implies **two or more people talking to each other** (dialogue, interview, conversation, debate),
   prefer "dialogue_lines" array with items:
-  { speaker: ASCII (no Vietnamese diacritics), line_vi: VIETNAMESE text, voice_tone: short English tone hint }.
+  {{ speaker: ASCII (no Vietnamese diacritics), line_vi: VIETNAMESE text, voice_tone: short English tone hint }}.
 - Names must be ASCII without Vietnamese diacritics, e.g., "Teacher Phuong Ngoc".
 
 FIELDS (keys)
@@ -219,7 +217,7 @@ def reset_form():
     st.session_state["user_idea"] = ""
     st.session_state["final_prompt"] = ""
     st.session_state["style"] = DEFAULT_STYLE
-    # Không gọi st.rerun() trong callback
+    # không gọi st.rerun() trong callback
 
 # ==============================
 # SIDEBAR: API KEY
@@ -388,11 +386,9 @@ with col2:
 
                     dialogue_section = "No dialogue."
                     audio_section = "No speech; only ambience and foley."
-                    final_dialogue_single = ""
 
                     if speech:
                         if multi:
-                            # Ưu tiên dialogue_lines nếu có
                             lines = extracted.get("dialogue_lines") if isinstance(extracted.get("dialogue_lines"), list) else []
                             rendered, voices = [], []
                             for item in lines:
@@ -406,13 +402,14 @@ with col2:
                                 dialogue_section = "Use the following lines exactly (Vietnamese):\n" + "\n".join(rendered)
                                 audio_section = "Generate separate Vietnamese voices with these tones: " + "; ".join(voices) + "."
                             else:
-                                # fallback: một câu
-                                final_dialogue_single = (extracted.get("dialogue") or "").strip() or craft_dialogue(user_idea)
+                                # fallback đơn thoại
+                                single = (extracted.get("dialogue") or "").strip() or craft_dialogue(user_idea)
+                                dialogue_section = f'Animate mouth to sync with: "{single}".'
+                                voice = extracted.get("voice_type", "a natural voice")
+                                audio_section = f"Generate natural Vietnamese speech, spoken by {voice}."
                         else:
-                            final_dialogue_single = (extracted.get("dialogue") or "").strip() or craft_dialogue(user_idea)
-
-                        if final_dialogue_single:
-                            dialogue_section = f'Animate mouth to sync with: "{final_dialogue_single}".'
+                            single = (extracted.get("dialogue") or "").strip() or craft_dialogue(user_idea)
+                            dialogue_section = f'Animate mouth to sync with: "{single}".'
                             voice = extracted.get("voice_type", "a natural voice")
                             audio_section = f"Generate natural Vietnamese speech, spoken by {voice}."
 
