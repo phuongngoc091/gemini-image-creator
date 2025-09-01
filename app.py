@@ -18,7 +18,7 @@ APPLE_STYLE_CSS = """
         padding: 10px 24px; transition: all 0.2s ease-in-out; font-weight: 500;
     }
     .stButton > button:hover { background-color: #0056b3; color: white; }
-    .stButton > button:disabled { background-color: #e9e9eb; color: #8a8a8a; border-color: #d1d1d6; }
+    .stButton > button:disabled { background-color: #e9e9eb; color: #8a8a8a; border-color: #d1d1d6; cursor: not-allowed; }
     .stButton:has(button:contains("Làm mới")) > button { background-color: #e9e9eb; color: #000000; }
     .stButton:has(button:contains("Làm mới")) > button:hover { background-color: #d1d1d6; }
     .stTextArea textarea, .stTextInput input, .stSelectbox div[data-baseweb="select"] > div {
@@ -66,19 +66,21 @@ Speech: {dialogue_section}
 Visual Effects: Create realistic effects like {visual_effects}.
 Audio: {audio_section}
 """
+
+# --- SIÊU PROMPT DÀNH CHO "BIÊN KỊCH AI" (SỬA LỖI DỊCH THUẬT) ---
 META_PROMPT_FOR_GEMINI = """
-You are a visionary film director AI. Your task is to take a user's simple idea (in Vietnamese) and expand it into a rich, detailed cinematic prompt.
+You are a creative director AI. Your primary task is to convert a simple user idea (in Vietnamese) into a detailed cinematic prompt for a video AI model.
 
 **CRITICAL OUTPUT REQUIREMENTS:**
-1.  **LANGUAGE:** All JSON values MUST be in ENGLISH, except for the "dialogue" field.
-2.  **DIALOGUE:** The "dialogue" value MUST remain in VIETNAMESE. If the user provides dialogue, rewrite it to be concise (under 8s). If not, it should be an empty string.
-3.  **FORMAT:** The entire output MUST be a single, clean JSON object.
+1.  **LANGUAGE:** All JSON values MUST be in ENGLISH, with only ONE exception. This includes proper nouns like names and places, which should be transliterated or translated appropriately (e.g., "Thầy giáo Phương Ngọc" should become "Teacher Phuong Ngoc").
+2.  **EXCEPTION FOR DIALOGUE:** The value for the "dialogue" field MUST remain in its original VIETNAMESE.
+3.  **FORMAT:** The entire final output MUST be a single, clean JSON object. Do not add any explanatory text before or after the JSON block.
 
 **CREATIVE PROCESS:**
--   Analyze the user's idea and the chosen `{style}`.
--   Envision the scene and add creative details for subject, setting, mood, lighting, and camera work.
--   Translate descriptive elements to English.
--   Construct a JSON object with fields: "subject_description", "core_action", "setting_description", "dialogue", "mood", "visual_effects", "voice_type", "gesture", "camera_motion".
+1.  **Analyze Idea:** Read the user's idea and the chosen `{style}`.
+2.  **Envision Scene:** Visualize the idea as a movie scene. Add creative details for subject, setting, mood, lighting, and camera work to elevate the concept.
+3.  **Rewrite Dialogue:** If the user provides dialogue, rewrite it in VIETNAMESE to be natural and concise (under 8 seconds). If not, the "dialogue" field should be an empty string.
+4.  **Translate & Build JSON:** Translate all descriptive elements into fluent English. Then, construct the JSON object with the required fields.
 
 **STYLE DIRECTIVE:** The user has selected the style: "{style}".
 
@@ -133,23 +135,24 @@ with col2:
     user_idea = st.text_area(
         "Nhập ý tưởng video bằng tiếng Việt:", height=210,
         placeholder="Ví dụ: Thầy giáo bước lên bục giảng, mỉm cười nói: 'Xin chào các em'",
-        key="user_idea"
+        key="user_idea_input"
     )
     
     form_col1, form_col2 = st.columns([1, 1])
     with form_col1:
         submitted = st.button("Tạo kịch bản", use_container_width=True)
     with form_col2:
-        # Nút "Làm mới" chỉ bật khi đã có kết quả
         if st.button("Làm mới", use_container_width=True, disabled=not st.session_state.result_generated):
-            st.session_state.user_idea = ""
+            st.session_state.user_idea_input = ""
             st.session_state.result_generated = False
-            # Không cần st.rerun() để tránh load lại trang
+            st.rerun() # Thêm rerun ở đây để xóa kết quả ngay lập tức
 
     # Placeholder để chứa kết quả
     result_placeholder = st.empty()
 
     if submitted and user_idea:
+        # Khi nhấn nút Tạo, ẩn nút Làm mới đi
+        st.session_state.result_generated = False
         if uploaded_file:
             final_style = "Dựa trên phong cách của hình ảnh được cung cấp"
         else:
@@ -200,14 +203,14 @@ with col2:
                 template = IMAGE_TO_VIDEO_TEMPLATE if uploaded_file else TEXT_TO_VIDEO_TEMPLATE
                 final_prompt = template.format(**prompt_data)
 
-                # Hiển thị kết quả vào placeholder
                 with result_placeholder.container():
                     st.divider()
                     st.subheader("Kịch bản Prompt chi tiết")
                     st.text_area("Prompt (tiếng Anh) đã được tối ưu cho AI:", value=final_prompt, height=350)
                 
-                # Đánh dấu là đã có kết quả
+                # Sửa lỗi 1: Đánh dấu đã có kết quả và rerun để cập nhật nút "Làm mới"
                 st.session_state.result_generated = True
+                st.rerun()
 
             except Exception as e:
                 with result_placeholder.container():
