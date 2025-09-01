@@ -138,9 +138,8 @@ with col2:
     with form_col1:
         submitted = st.button("Tạo kịch bản", use_container_width=True)
     with form_col2:
-        # --- BỎ CHỨC NĂNG DISABLED ---
         if st.button("Làm mới", use_container_width=True):
-            st.session_state.user_idea = ""
+            st.session_state.user_idea_input = ""
             st.session_state.final_prompt = ""
             st.rerun()
 
@@ -194,6 +193,9 @@ with col2:
 
                 template = IMAGE_TO_VIDEO_TEMPLATE if uploaded_file else TEXT_TO_VIDEO_TEMPLATE
                 st.session_state.final_prompt = template.format(**prompt_data)
+                
+                # Sửa lỗi: Gọi st.rerun() để cập nhật giao diện sau khi có kết quả
+                st.rerun()
 
             except Exception as e:
                 st.error(f"Đã xảy ra lỗi: {e}")
