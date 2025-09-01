@@ -94,7 +94,7 @@ st.markdown(APPLE_STYLE_CSS, unsafe_allow_html=True)
 st.title("Viết prompt tạo video với phuongngoc091")
 st.caption("Biến ý tưởng đơn giản của bạn thành một kịch bản video chi tiết.")
 
-# --- CÁC KHUÔN MẪU PROMPT (ĐÃ CẬP NHẬT) ---
+# --- CÁC KHUÔN MẪU PROMPT (KHÔNG THAY ĐỔI) ---
 IMAGE_TO_VIDEO_TEMPLATE = """
 Style: {style}
 Initial Frame: Use the provided image of {subject_description}.
@@ -157,7 +157,7 @@ with col1:
     st.subheader("Ý tưởng hình sang video")
     uploaded_file = st.file_uploader("Tải ảnh lên (tùy chọn)", type=["png", "jpg", "jpeg"])
     if uploaded_file:
-        st.image(Image.open(uploaded_file), caption="Khung hình khởi đầu", use_column_width=True)
+        st.image(Image.open(uploaded_file), caption="Khung hình khởi đầu", use_container_width=True)
 
     st.image(
         "https://ia600905.us.archive.org/0/items/Donate_png/1111111.jpg",
@@ -168,9 +168,9 @@ with col1:
 with col2:
     st.subheader("Ý tưởng của bạn")
     
-    # --- THÊM CHỨC NĂNG CHỌN STYLE ---
+    # --- SỬA LỖI SELECTBOX TẠI ĐÂY ---
     style_options = ["Chân thực (Photorealistic)", "Hoạt hình 3D Pixar (3D Pixar Animation)", "Anime Nhật Bản (Japanese Anime)", "Tranh màu nước (Watercolor Painting)", "Phim tài liệu (Documentary)", "Phim cũ (Vintage Film)"]
-    selected_style = st.selectbox("Chọn phong cách video:", style_options)
+    selected_style = st.selectbox("Chọn phong cách video:", options=style_options, index=0) # index=0 để chọn "Chân thực" làm mặc định
     
     user_idea = st.text_area(
         "Nhập ý tưởng video bằng tiếng Việt:",
@@ -191,7 +191,6 @@ with col2:
         with st.spinner("AI đang phân tích và sáng tạo..."):
             response_text = ""
             try:
-                # Gửi cả style người dùng chọn vào prompt
                 request_for_gemini = META_PROMPT_FOR_GEMINI.format(user_idea=user_idea, style=selected_style)
                 response = gemini_model.generate_content(request_for_gemini)
 
