@@ -50,15 +50,26 @@ APPLE_STYLE_CSS = """
     }
 
     /* Ô nhập liệu */
-    .stTextArea textarea, .stTextInput input, .stSelectbox > div > div {
+    .stTextArea textarea, .stTextInput input {
         background-color: #ffffff;
         border: 1px solid #d1d1d6;
         border-radius: 12px;
         padding: 10px;
     }
-    .stTextArea textarea:focus, .stTextInput input:focus, .stSelectbox > div > div:focus-within {
+    .stTextArea textarea:focus, .stTextInput input:focus {
          border-color: #007aff;
          box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.2);
+    }
+    
+    /* Chỉnh sửa riêng cho Selectbox để sửa lỗi hiển thị */
+    .stSelectbox div[data-baseweb="select"] > div {
+        background-color: #ffffff;
+        border: 1px solid #d1d1d6;
+        border-radius: 12px;
+    }
+    .stSelectbox div[data-baseweb="select"] > div:focus-within {
+        border-color: #007aff;
+        box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.2);
     }
 
     /* Box tải file lên */
