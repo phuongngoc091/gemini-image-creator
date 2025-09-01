@@ -42,6 +42,8 @@ if 'result_generated' not in st.session_state:
     st.session_state.result_generated = False
 if 'user_idea' not in st.session_state:
     st.session_state.user_idea = ""
+if 'final_prompt' not in st.session_state:
+    st.session_state.final_prompt = ""
 
 # --- TIÊU ĐỀ ---
 st.title("Viết prompt tạo video với phuongngoc091")
@@ -66,8 +68,6 @@ Speech: {dialogue_section}
 Visual Effects: Create realistic effects like {visual_effects}.
 Audio: {audio_section}
 """
-
-# --- SIÊU PROMPT DÀNH CHO "BIÊN KỊCH AI" (SỬA LỖI DỊCH THUẬT) ---
 META_PROMPT_FOR_GEMINI = """
 You are a creative director AI. Your primary task is to convert a simple user idea (in Vietnamese) into a detailed cinematic prompt for a video AI model.
 
@@ -77,10 +77,11 @@ You are a creative director AI. Your primary task is to convert a simple user id
 3.  **FORMAT:** The entire final output MUST be a single, clean JSON object. Do not add any explanatory text before or after the JSON block.
 
 **CREATIVE PROCESS:**
-1.  **Analyze Idea:** Read the user's idea and the chosen `{style}`.
-2.  **Envision Scene:** Visualize the idea as a movie scene. Add creative details for subject, setting, mood, lighting, and camera work to elevate the concept.
-3.  **Rewrite Dialogue:** If the user provides dialogue, rewrite it in VIETNAMESE to be natural and concise (under 8 seconds). If not, the "dialogue" field should be an empty string.
-4.  **Translate & Build JSON:** Translate all descriptive elements into fluent English. Then, construct the JSON object with the required fields.
+-   Analyze the user's idea and the chosen `{style}`.
+-   Envision the scene and add creative details for subject, setting, mood, lighting, and camera work.
+-   Rewrite dialogue in VIETNAMESE to be concise (under 8s). If none, the "dialogue" field should be an empty string.
+-   Translate descriptive elements to English.
+-   Construct a JSON object with all required fields.
 
 **STYLE DIRECTIVE:** The user has selected the style: "{style}".
 
@@ -135,7 +136,7 @@ with col2:
     user_idea = st.text_area(
         "Nhập ý tưởng video bằng tiếng Việt:", height=210,
         placeholder="Ví dụ: Thầy giáo bước lên bục giảng, mỉm cười nói: 'Xin chào các em'",
-        key="user_idea_input"
+        key="user_idea"
     )
     
     form_col1, form_col2 = st.columns([1, 1])
@@ -143,16 +144,13 @@ with col2:
         submitted = st.button("Tạo kịch bản", use_container_width=True)
     with form_col2:
         if st.button("Làm mới", use_container_width=True, disabled=not st.session_state.result_generated):
-            st.session_state.user_idea_input = ""
+            st.session_state.user_idea = ""
             st.session_state.result_generated = False
-            st.rerun() # Thêm rerun ở đây để xóa kết quả ngay lập tức
-
-    # Placeholder để chứa kết quả
-    result_placeholder = st.empty()
+            st.session_state.final_prompt = ""
+            st.rerun()
 
     if submitted and user_idea:
-        # Khi nhấn nút Tạo, ẩn nút Làm mới đi
-        st.session_state.result_generated = False
+        st.session_state.result_generated = False # Đặt lại trạng thái khi bắt đầu chạy
         if uploaded_file:
             final_style = "Dựa trên phong cách của hình ảnh được cung cấp"
         else:
@@ -201,23 +199,21 @@ with col2:
                     prompt_data['audio_section'] = "No speech audio, only ambient sounds."
 
                 template = IMAGE_TO_VIDEO_TEMPLATE if uploaded_file else TEXT_TO_VIDEO_TEMPLATE
-                final_prompt = template.format(**prompt_data)
-
-                with result_placeholder.container():
-                    st.divider()
-                    st.subheader("Kịch bản Prompt chi tiết")
-                    st.text_area("Prompt (tiếng Anh) đã được tối ưu cho AI:", value=final_prompt, height=350)
+                st.session_state.final_prompt = template.format(**prompt_data)
                 
-                # Sửa lỗi 1: Đánh dấu đã có kết quả và rerun để cập nhật nút "Làm mới"
                 st.session_state.result_generated = True
-                st.rerun()
 
             except Exception as e:
-                with result_placeholder.container():
-                    st.error(f"Đã xảy ra lỗi: {e}")
+                st.error(f"Đã xảy ra lỗi: {e}")
 
     elif submitted:
         st.warning("Vui lòng nhập ý tưởng của bạn.")
+
+    # Luôn hiển thị kết quả nếu có
+    if st.session_state.final_prompt:
+        st.divider()
+        st.subheader("Kịch bản Prompt chi tiết")
+        st.text_area("Prompt (tiếng Anh) đã được tối ưu cho AI:", value=st.session_state.final_prompt, height=350)
 
 # --- FOOTER ---
 st.markdown('<div class="footer">Thiết kế bởi: phuongngoc091 | 0932 468 218</div>', unsafe_allow_html=True)
